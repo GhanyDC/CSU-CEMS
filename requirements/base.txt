@@ -1,0 +1,16 @@
+# Core
+Django>=5.1,<5.2
+psycopg2-binary>=2.9.9
+gunicorn>=22.0.0
+
+# Security
+django-ratelimit>=4.1.0
+
+# Environment
+python-decouple>=3.8
+
+# Utilities
+django-extensions>=3.2.3
+
+# Logging
+python-json-logger>=2.0.7

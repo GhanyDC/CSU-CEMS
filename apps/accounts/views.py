@@ -1,0 +1,170 @@
+"""
+Accounts views — authentication endpoints.
+
+Security measures:
+- Rate limiting by IP (django-ratelimit)
+- Account lock after N failed attempts
+- Generic error messages (never reveal whether student exists)
+- Full audit logging of every attempt
+"""
+import logging
+from datetime import date
+from typing import Any, Dict, Optional
+
+from django.conf import settings
+from django.http import JsonResponse
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
+
+from apps.accounts.models import Student
+from apps.audit.models import AuditLog
+from apps.audit.services import AuditService
+
+logger = logging.getLogger("cems.login")
+
+# Generic message — NEVER reveal whether a student_id exists
+GENERIC_AUTH_ERROR: str = "Invalid credentials. Please try again."
+ACCOUNT_LOCKED_ERROR: str = "Account is temporarily locked. Please try again later."
+
+
+def _get_client_ip(request: Any) -> str:
+    """Extract client IP, respecting X-Forwarded-For behind a proxy."""
+    x_forwarded_for: Optional[str] = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "0.0.0.0")
+
+
+def _get_user_agent(request: Any) -> str:
+    return request.META.get("HTTP_USER_AGENT", "")
+
+
+@require_POST
+@csrf_protect
+@ratelimit(key="ip", rate="10/m", method="POST", block=True)
+def student_login(request: Any) -> JsonResponse:
+    """
+    Authenticate a student by student_id + date_of_birth.
+
+    POST body (JSON or form-encoded):
+        student_id: str
+        date_of_birth: str (YYYY-MM-DD)
+
+    Returns JSON with:
+        - 200: {"success": true, "student_id": "…"}
+        - 400: missing fields
+        - 401: invalid credentials / locked
+        - 429: rate limited (handled by decorator)
+    """
+    import json
+
+    ip_address: str = _get_client_ip(request)
+    user_agent: str = _get_user_agent(request)
+
+    # --- Parse input ---
+    try:
+        if request.content_type == "application/json":
+            body: Dict[str, Any] = json.loads(request.body)
+        else:
+            body = request.POST.dict()
+    except (json.JSONDecodeError, Exception):
+        return JsonResponse({"success": False, "error": "Invalid request body."}, status=400)
+
+    student_id: Optional[str] = body.get("student_id")
+    dob_raw: Optional[str] = body.get("date_of_birth")
+
+    if not student_id or not dob_raw:
+        return JsonResponse(
+            {"success": False, "error": "student_id and date_of_birth are required."},
+            status=400,
+        )
+
+    # Parse date_of_birth
+    try:
+        dob: date = date.fromisoformat(dob_raw)
+    except (ValueError, TypeError):
+        return JsonResponse(
+            {"success": False, "error": "date_of_birth must be in YYYY-MM-DD format."},
+            status=400,
+        )
+
+    # --- Lookup student ---
+    try:
+        student: Student = Student.objects.get(student_id=student_id)
+    except Student.DoesNotExist:
+        # Log the attempt but return a generic error
+        AuditService.log_event(
+            student_id_attempted=student_id,
+            event_type=AuditLog.EventType.LOGIN_ATTEMPT,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="Student ID not found.",
+        )
+        return JsonResponse(
+            {"success": False, "error": GENERIC_AUTH_ERROR},
+            status=401,
+        )
+
+    # --- Check account lock ---
+    if student.is_locked:
+        AuditService.log_event(
+            student_id_attempted=student_id,
+            event_type=AuditLog.EventType.LOGIN_ATTEMPT,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="Account is locked.",
+        )
+        return JsonResponse(
+            {"success": False, "error": ACCOUNT_LOCKED_ERROR},
+            status=401,
+        )
+
+    # --- Verify date of birth ---
+    if student.date_of_birth != dob:
+        student.increment_failed_attempts(
+            max_attempts=settings.CEMS_MAX_FAILED_ATTEMPTS,
+            lockout_minutes=settings.CEMS_LOCKOUT_MINUTES,
+        )
+        AuditService.log_event(
+            student_id_attempted=student_id,
+            event_type=AuditLog.EventType.LOGIN_ATTEMPT,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details=f"Incorrect date_of_birth. Attempt #{student.failed_attempts}.",
+        )
+        return JsonResponse(
+            {"success": False, "error": GENERIC_AUTH_ERROR},
+            status=401,
+        )
+
+    # --- Success ---
+    student.reset_failed_attempts()
+
+    AuditService.log_event(
+        student_id_attempted=student_id,
+        event_type=AuditLog.EventType.LOGIN_ATTEMPT,
+        success=True,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        details="Authentication successful.",
+    )
+
+    # Store authenticated student in session
+    request.session["authenticated_student_id"] = str(student.id)
+    request.session["student_id"] = student.student_id
+
+    return JsonResponse(
+        {
+            "success": True,
+            "student_id": student.student_id,
+            "full_name": student.full_name,
+            "has_voted": student.has_voted,
+        },
+        status=200,
+    )

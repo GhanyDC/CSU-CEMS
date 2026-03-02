@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# CEMS – Docker Compose (local development)
+# ---------------------------------------------------------------------------
+services:
+  # ---------- PostgreSQL ----------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cems}
+      POSTGRES_USER: ${POSTGRES_USER:-cems}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cems_dev_password}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cems} -d ${POSTGRES_DB:-cems}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- Django application ----------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  static_volume:
