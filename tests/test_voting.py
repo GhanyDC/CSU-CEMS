@@ -2,115 +2,196 @@
 Tests for voting logic.
 
 Covers:
-- Vote creation hashes student_id
-- Cannot vote twice (one-person-one-vote)
+- Ballot creation hashes student_id
+- Cannot ballot twice per election (one-ballot-per-voter-per-election)
+- Multiple selections per ballot
 - Transactional integrity
-- Vote admin is read-only
+- Ballot admin is read-only
 """
 import pytest
-from datetime import date
+from datetime import date, datetime, timezone
+
+from django.db import IntegrityError
 
 from apps.accounts.models import Student
-from apps.elections.models import Candidate
-from apps.voting.models import Vote
-from apps.voting.services import VoteAlreadyCastError, VotingService
+from apps.elections.models import Candidate, Election, Position
+from apps.voting.models import Ballot, BallotSelection
+from apps.voting.services import BallotAlreadyCastError, VotingService
 
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+def make_election(name="General Election 2026"):
+    return Election.objects.create(
+        name=name,
+        start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        end_time=datetime(2026, 12, 31, tzinfo=timezone.utc),
+        status=Election.Status.ACTIVE,
+    )
+
+
+def make_position(election, title="President", category=Position.Category.EXECUTIVE, max_selections=1, order=0):
+    return Position.objects.create(
+        election=election,
+        title=title,
+        category=category,
+        max_selections=max_selections,
+        order=order,
+    )
+
+
+def make_candidate(position, full_name="Candidate A", party="Party X"):
+    return Candidate.objects.create(
+        position=position,
+        full_name=full_name,
+        party=party,
+    )
+
+
+def make_student(student_id="VOTE001", full_name="Voter One"):
+    return Student.objects.create(
+        student_id=student_id,
+        full_name=full_name,
+        date_of_birth=date(2001, 3, 10),
+        course="Physics",
+        year=2,
+    )
+
+
+# ── Ballot creation ───────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-class TestVoteCreation:
-    """Test suite for vote casting."""
+class TestBallotCreation:
+    """Test suite for ballot casting."""
 
     def setup_method(self) -> None:
-        self.student = Student.objects.create(
-            student_id="VOTE001",
-            full_name="Voter One",
-            date_of_birth=date(2001, 3, 10),
-            course="Physics",
-            year=2,
-        )
-        self.candidate = Candidate.objects.create(
-            full_name="Candidate A",
-            position="President",
-            party="Party X",
-        )
+        self.student = make_student()
+        self.election = make_election()
+        self.position = make_position(self.election)
+        self.candidate = make_candidate(self.position)
 
-    def test_cast_vote_succeeds(self) -> None:
-        """A valid vote is recorded successfully."""
-        vote = VotingService.cast_vote(self.student, self.candidate)
-        assert vote is not None
-        assert vote.position == "President"
-        assert vote.candidate == self.candidate
+    def test_cast_ballot_succeeds(self) -> None:
+        """A valid ballot is recorded successfully."""
+        ballot = VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
+        )
+        assert ballot is not None
+        assert ballot.election == self.election
 
-    def test_vote_hashes_student_id(self) -> None:
+    def test_ballot_creates_selection(self) -> None:
+        """Each (position, candidate) pair produces one BallotSelection."""
+        ballot = VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
+        )
+        assert ballot.selections.count() == 1
+        sel = ballot.selections.first()
+        assert sel.position == self.position
+        assert sel.candidate == self.candidate
+
+    def test_ballot_hashes_student_id(self) -> None:
         """The stored hashed_student_id is not the raw student_id."""
-        vote = VotingService.cast_vote(self.student, self.candidate)
-        assert vote.hashed_student_id != self.student.student_id
-        assert len(vote.hashed_student_id) == 64  # SHA-256 hex
-
-    def test_vote_hash_is_deterministic(self) -> None:
-        """Same student_id always produces the same hash."""
-        hash1 = Vote.hash_student_id("VOTE001")
-        hash2 = Vote.hash_student_id("VOTE001")
-        assert hash1 == hash2
-
-    def test_different_students_different_hashes(self) -> None:
-        """Different student_ids produce different hashes."""
-        hash1 = Vote.hash_student_id("VOTE001")
-        hash2 = Vote.hash_student_id("VOTE002")
-        assert hash1 != hash2
+        ballot = VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
+        )
+        assert ballot.hashed_student_id != self.student.student_id
+        assert len(ballot.hashed_student_id) == 64  # SHA-256 hex
 
     def test_student_marked_has_voted(self) -> None:
         """After voting, student.has_voted is True."""
-        VotingService.cast_vote(self.student, self.candidate)
+        VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
+        )
         self.student.refresh_from_db()
         assert self.student.has_voted is True
 
-    def test_cannot_vote_twice(self) -> None:
-        """A student cannot vote a second time."""
-        VotingService.cast_vote(self.student, self.candidate)
-        with pytest.raises(VoteAlreadyCastError):
-            VotingService.cast_vote(self.student, self.candidate)
-
-    def test_cannot_vote_twice_different_candidate(self) -> None:
-        """A student cannot vote for a different candidate either."""
-        candidate_b = Candidate.objects.create(
-            full_name="Candidate B",
-            position="President",
-            party="Party Y",
+    def test_cannot_ballot_twice_same_election(self) -> None:
+        """A student cannot submit two ballots for the same election."""
+        VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
         )
-        VotingService.cast_vote(self.student, self.candidate)
-        with pytest.raises(VoteAlreadyCastError):
-            VotingService.cast_vote(self.student, candidate_b)
+        with pytest.raises(BallotAlreadyCastError):
+            VotingService.cast_ballot(
+                self.student, self.election, [(self.position, self.candidate)]
+            )
 
-    def test_vote_count_after_cast(self) -> None:
-        """Exactly one vote record exists after casting."""
-        VotingService.cast_vote(self.student, self.candidate)
-        assert Vote.objects.count() == 1
+    def test_ballot_allowed_in_different_election(self) -> None:
+        """A student may vote in a second, separate election."""
+        election2 = make_election(name="By-Election 2026")
+        pos2 = make_position(election2, title="Senator", category=Position.Category.SENATE)
+        cand2 = make_candidate(pos2, full_name="Senator Candidate")
 
-    def test_double_vote_does_not_create_extra_record(self) -> None:
-        """Failed double vote does not leave a dangling record."""
-        VotingService.cast_vote(self.student, self.candidate)
+        VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
+        )
+        ballot2 = VotingService.cast_ballot(
+            self.student, election2, [(pos2, cand2)]
+        )
+        assert ballot2 is not None
+
+    def test_double_ballot_does_not_create_extra_record(self) -> None:
+        """Failed duplicate ballot attempt leaves no dangling record."""
+        VotingService.cast_ballot(
+            self.student, self.election, [(self.position, self.candidate)]
+        )
         try:
-            VotingService.cast_vote(self.student, self.candidate)
-        except VoteAlreadyCastError:
+            VotingService.cast_ballot(
+                self.student, self.election, [(self.position, self.candidate)]
+            )
+        except BallotAlreadyCastError:
             pass
-        assert Vote.objects.count() == 1
+        assert Ballot.objects.count() == 1
 
+    def test_multi_position_ballot(self) -> None:
+        """A single ballot can contain selections for multiple positions."""
+        pos2 = make_position(
+            self.election,
+            title="Vice President",
+            category=Position.Category.EXECUTIVE,
+            order=1,
+        )
+        cand2 = make_candidate(pos2, full_name="VP Candidate")
+
+        ballot = VotingService.cast_ballot(
+            self.student,
+            self.election,
+            [(self.position, self.candidate), (pos2, cand2)],
+        )
+        assert ballot.selections.count() == 2
+
+
+# ── Ballot model ──────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-class TestVoteModel:
-    """Test suite for Vote model methods."""
+class TestBallotModel:
+    """Test suite for Ballot model methods."""
 
     def test_hash_student_id_returns_string(self) -> None:
-        """hash_student_id returns a hex string."""
-        result = Vote.hash_student_id("TEST123")
+        """hash_student_id returns a 64-char hex string."""
+        result = Ballot.hash_student_id("TEST123")
         assert isinstance(result, str)
         assert len(result) == 64
 
-    def test_hash_student_id_includes_salt(self) -> None:
+    def test_hash_is_deterministic(self) -> None:
+        """Same student_id always produces the same hash."""
+        assert Ballot.hash_student_id("VOTE001") == Ballot.hash_student_id("VOTE001")
+
+    def test_different_students_different_hashes(self) -> None:
+        """Different student_ids produce different hashes."""
+        assert Ballot.hash_student_id("VOTE001") != Ballot.hash_student_id("VOTE002")
+
+    def test_hash_includes_salt(self) -> None:
         """Hash uses SECRET_KEY as salt, so raw SHA-256 of ID differs."""
         import hashlib
 
         raw_hash = hashlib.sha256("TEST123".encode()).hexdigest()
-        salted_hash = Vote.hash_student_id("TEST123")
+        salted_hash = Ballot.hash_student_id("TEST123")
         assert raw_hash != salted_hash
+
+    def test_unique_constraint_ballot_per_voter_per_election(self) -> None:
+        """DB-level unique constraint prevents two ballots for same voter+election."""
+        election = make_election()
+        hashed = Ballot.hash_student_id("STUDENT_X")
+
+        Ballot.objects.create(election=election, hashed_student_id=hashed)
+        with pytest.raises(IntegrityError):
+            Ballot.objects.create(election=election, hashed_student_id=hashed)
