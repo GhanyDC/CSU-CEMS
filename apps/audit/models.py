@@ -19,6 +19,9 @@ class AuditLog(models.Model):
         LOGIN_ATTEMPT = "login_attempt", "Login Attempt"
         VOTE_CAST = "vote_cast", "Vote Cast"
         SUSPICIOUS_ACTIVITY = "suspicious_activity", "Suspicious Activity"
+        ELECTION_STARTED = "election_started", "Election Started"
+        ELECTION_CLOSED = "election_closed", "Election Closed"
+        RESULTS_PUBLISHED = "results_published", "Results Published"
 
     id: models.UUIDField = models.UUIDField(
         primary_key=True,

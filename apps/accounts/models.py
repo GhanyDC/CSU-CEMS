@@ -34,6 +34,12 @@ class Student(models.Model):
     )
     full_name: models.CharField = models.CharField(max_length=255)
     date_of_birth: models.DateField = models.DateField()
+    college: models.CharField = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="College affiliation (e.g. College of Engineering).",
+    )
     course: models.CharField = models.CharField(max_length=255)
     year: models.PositiveSmallIntegerField = models.PositiveSmallIntegerField()
     has_voted: models.BooleanField = models.BooleanField(

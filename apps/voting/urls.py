@@ -1,7 +1,9 @@
 from django.urls import path
 
+from apps.voting import views
+
 app_name = "voting"
 
 urlpatterns: list = [
-    # Voting endpoints will be added in future phases
+    path("cast/", views.cast_ballot, name="cast"),
 ]

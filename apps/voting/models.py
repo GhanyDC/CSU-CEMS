@@ -52,15 +52,17 @@ class Ballot(models.Model):
         return f"Ballot {self.id} – {self.election.name}"
 
     @staticmethod
-    def hash_student_id(student_id: str) -> str:
+    def hash_student_id(student_id: str, election_id: str = "") -> str:
         """
-        Return a salted SHA-256 hex digest of the student_id.
+        Return a salted SHA-256 hex digest of the student_id scoped to an election.
 
         Uses DJANGO SECRET_KEY as salt so the hash cannot be
         reversed without knowledge of the secret.
+        Including the election_id ensures that hashes are unique per election
+        cycle, preventing cross-election correlation of voter identity.
         """
         salt: str = settings.SECRET_KEY
-        value: str = f"{salt}:{student_id}"
+        value: str = f"{salt}:{student_id}:{election_id}"
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
