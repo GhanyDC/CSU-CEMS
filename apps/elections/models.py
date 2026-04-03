@@ -8,6 +8,7 @@ Models are structured to match the campus constitutional structure:
 """
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -37,9 +38,22 @@ class Election(models.Model):
         ordering = ["-start_time"]
         verbose_name = "Election"
         verbose_name_plural = "Elections"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(end_time__gt=models.F("start_time")),
+                name="election_end_time_after_start_time",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.get_status_display()})"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError(
+                {"end_time": "End time must be after start time."}
+            )
 
 
 class Position(models.Model):
@@ -112,6 +126,24 @@ class Candidate(models.Model):
         ordering = ["position__order", "full_name"]
         verbose_name = "Candidate"
         verbose_name_plural = "Candidates"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["position", "full_name"],
+                name="unique_candidate_name_per_position",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.full_name} – {self.position.title}"
+
+    def clean(self) -> None:
+        super().clean()
+        if (
+            self.position_id
+            and hasattr(self, "position")
+            and self.position.category == Position.Category.HOUSE_COLLEGE
+            and not self.college
+        ):
+            raise ValidationError(
+                {"college": "College is required for House College Representatives."}
+            )

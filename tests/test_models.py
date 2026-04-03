@@ -55,17 +55,6 @@ class TestStudentModel:
                 year=1,
             )
 
-    def test_has_voted_defaults_false(self) -> None:
-        """New students default to has_voted=False."""
-        s = Student.objects.create(
-            student_id="DEF001",
-            full_name="Default",
-            date_of_birth=date(2000, 1, 1),
-            course="Law",
-            year=1,
-        )
-        assert s.has_voted is False
-
     def test_failed_attempts_defaults_zero(self) -> None:
         """New students default to failed_attempts=0."""
         s = Student.objects.create(

@@ -1,0 +1,155 @@
+/* ============================================================
+   CEMS — Campus Election Management System  •  Custom Styles
+   ============================================================ */
+
+/* ---------- Global ---------- */
+body {
+    background-color: #f5f7fb;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* ---------- Login Page ---------- */
+.login-page {
+    background: linear-gradient(135deg, #0d6efd 0%, #0a4dd0 50%, #083b9e 100%);
+    min-height: 100vh;
+}
+
+.login-card {
+    border-radius: 1rem;
+    animation: slideUp 0.5s ease-out;
+}
+
+.login-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e8f0fe;
+    border-radius: 50%;
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Candidate Cards ---------- */
+.candidate-card {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 0.75rem !important;
+}
+
+.candidate-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(13, 110, 253, 0.15);
+    border-color: #0d6efd !important;
+}
+
+.candidate-card.selected {
+    border-color: #198754 !important;
+    background-color: #f0fdf4;
+    box-shadow: 0 0 0 2px #198754;
+}
+
+.candidate-check {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 1.25rem;
+    display: none;
+}
+
+.candidate-card.selected .candidate-check {
+    display: block;
+}
+
+.candidate-avatar {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e8f0fe;
+    border-radius: 50%;
+}
+
+/* ---------- Progress Bars (Results) ---------- */
+.progress {
+    border-radius: 0.5rem;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+/* ---------- Cards ---------- */
+.card {
+    border-radius: 0.75rem;
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------- State Machine Visualization ---------- */
+.state-node .badge {
+    transition: all 0.3s ease;
+}
+
+.state-node .badge.bg-primary {
+    transform: scale(1.1);
+    box-shadow: 0 2px 10px rgba(13, 110, 253, 0.4);
+}
+
+/* ---------- Position Cards ---------- */
+.position-card {
+    border-left: 4px solid #0d6efd !important;
+}
+
+/* ---------- Toast ---------- */
+.toast {
+    border-radius: 0.5rem;
+}
+
+/* ---------- Selection Counter ---------- */
+.selection-counter {
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+/* ---------- Navbar ---------- */
+.navbar {
+    backdrop-filter: blur(10px);
+}
+
+/* ---------- Footer ---------- */
+footer {
+    background: #f8f9fa;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+    .login-card .card-body {
+        padding: 2rem !important;
+    }
+
+    .state-node .badge {
+        font-size: 0.75rem !important;
+        padding: 0.4rem 0.6rem !important;
+    }
+}

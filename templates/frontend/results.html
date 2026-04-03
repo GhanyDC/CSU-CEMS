@@ -1,0 +1,210 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Election Results{% endblock %}
+
+{% block navbar %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/dashboard/">
+            <i class="bi bi-ballot-fill"></i> CEMS
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item"><a class="nav-link" href="/dashboard/"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link" href="/ballot/"><i class="bi bi-pencil-square"></i> Vote</a></li>
+                <li class="nav-item"><a class="nav-link active" href="/results/"><i class="bi bi-bar-chart-fill"></i> Results</a></li>
+                <li class="nav-item d-none" id="nav-admin"><a class="nav-link" href="/admin-panel/"><i class="bi bi-gear-fill"></i> Admin</a></li>
+            </ul>
+            <div class="navbar-text text-white me-3">
+                <i class="bi bi-person-circle"></i> <span id="nav-user-name">Student</span>
+            </div>
+            <button class="btn btn-outline-light btn-sm" id="logout-btn"><i class="bi bi-box-arrow-right"></i> Logout</button>
+        </div>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="d-flex align-items-center mb-4">
+            <a href="/dashboard/" class="btn btn-outline-secondary me-3"><i class="bi bi-arrow-left"></i></a>
+            <div>
+                <h2 class="mb-0"><i class="bi bi-bar-chart-fill text-primary"></i> Election Results</h2>
+                <p class="text-muted mb-0" id="results-election-name">Loading...</p>
+            </div>
+        </div>
+
+        <!-- Not published alert -->
+        <div class="alert alert-warning d-none" id="results-not-available">
+            <i class="bi bi-hourglass-split"></i>
+            <strong>Results are not yet available.</strong>
+            Results will be published after the election is closed and tallied by the administrator.
+            <a href="/dashboard/" class="alert-link">Back to dashboard &rarr;</a>
+        </div>
+
+        <!-- Results Container -->
+        <div id="results-container" class="d-none">
+            <!-- Stats Summary -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm bg-primary text-white">
+                        <div class="card-body text-center">
+                            <h3 class="mb-0" id="total-votes-count">0</h3>
+                            <small>Total Ballots Cast</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm bg-success text-white">
+                        <div class="card-body text-center">
+                            <h3 class="mb-0" id="total-positions-count">0</h3>
+                            <small>Positions Contested</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm bg-info text-white">
+                        <div class="card-body text-center">
+                            <h3 class="mb-0" id="total-candidates-count">0</h3>
+                            <small>Total Candidates</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Position Results -->
+            <div id="positions-results"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(async function() {
+    const user = CEMS.getUser();
+    if (!user) { window.location.href = '/'; return; }
+    document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
+    if (user.is_admin) document.getElementById('nav-admin').classList.remove('d-none');
+    document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
+
+    // Try to load results
+    try {
+        const res = await CEMS.api('/api/elections/results/');
+
+        if (!res.success) {
+            document.getElementById('results-not-available').classList.remove('d-none');
+            document.getElementById('results-election-name').textContent = '';
+            return;
+        }
+
+        document.getElementById('results-container').classList.remove('d-none');
+        document.getElementById('results-election-name').textContent = res.election || '';
+
+        const positions = res.positions || [];
+        let totalCandidates = 0;
+        let totalBallots = 0;
+
+        positions.forEach(pos => {
+            const results = pos.results || [];
+            totalCandidates += results.length;
+            results.forEach(r => totalBallots = Math.max(totalBallots, r.votes || 0));
+        });
+
+        // Calculate total ballots from max votes in any single-seat position
+        const execPos = positions.find(p => p.category === 'executive');
+        if (execPos && execPos.results) {
+            totalBallots = execPos.results.reduce((sum, r) => sum + (r.votes || 0), 0);
+        }
+
+        document.getElementById('total-votes-count').textContent = totalBallots;
+        document.getElementById('total-positions-count').textContent = positions.length;
+        document.getElementById('total-candidates-count').textContent = totalCandidates;
+
+        renderResults(positions, totalBallots);
+
+    } catch (err) {
+        if (err.message && (err.message.includes('403') || err.message.includes('404'))) {
+            document.getElementById('results-not-available').classList.remove('d-none');
+        } else {
+            CEMS.showToast('Error loading results: ' + err.message, 'danger');
+        }
+        document.getElementById('results-election-name').textContent = '';
+    }
+})();
+
+function renderResults(positions, totalBallots) {
+    const container = document.getElementById('positions-results');
+    container.innerHTML = '';
+
+    positions.forEach((pos, idx) => {
+        const results = pos.results || [];
+        const maxVotes = results.length > 0 ? Math.max(...results.map(r => r.votes || 0)) : 0;
+        const posTotal = results.reduce((s, r) => s + (r.votes || 0), 0);
+
+        const categoryBadge = getCategoryBadge(pos.category);
+        const winnerInfo = pos.winner ? `<span class="badge bg-success"><i class="bi bi-trophy-fill"></i> ${CEMS.escapeHtml(pos.winner)}</span>` : '';
+
+        let barsHtml = '';
+        results.forEach((cand, ci) => {
+            const pct = posTotal > 0 ? ((cand.votes / posTotal) * 100).toFixed(1) : 0;
+            const isWinner = cand.votes === maxVotes && cand.votes > 0;
+            const barColor = isWinner ? 'bg-success' : 'bg-primary';
+            const winBadge = isWinner ? '<i class="bi bi-trophy-fill text-warning ms-1"></i>' : '';
+
+            barsHtml += `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <div>
+                            <strong>${CEMS.escapeHtml(cand.full_name || cand.candidate || '')}</strong>
+                            ${winBadge}
+                            ${cand.party ? `<small class="text-muted ms-1">(${CEMS.escapeHtml(cand.party)})</small>` : ''}
+                        </div>
+                        <span class="fw-bold">${cand.votes} vote${cand.votes !== 1 ? 's' : ''} (${pct}%)</span>
+                    </div>
+                    <div class="progress" style="height: 28px;">
+                        <div class="progress-bar ${barColor} progress-bar-striped ${isWinner ? 'progress-bar-animated' : ''}"
+                             role="progressbar"
+                             style="width: ${pct}%; transition: width 0.8s ease-in-out;"
+                             aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+                            ${pct}%
+                        </div>
+                    </div>
+                </div>`;
+        });
+
+        container.innerHTML += `
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <span class="badge bg-primary rounded-pill me-2">${idx + 1}</span>
+                            ${CEMS.escapeHtml(pos.position || pos.title || '')}
+                        </h5>
+                        <small class="text-muted">${categoryBadge} &mdash; ${posTotal} total votes</small>
+                    </div>
+                    <div>${winnerInfo}</div>
+                </div>
+                <div class="card-body">
+                    ${barsHtml || '<p class="text-muted">No candidates or votes.</p>'}
+                </div>
+            </div>`;
+    });
+}
+
+function getCategoryBadge(cat) {
+    const map = {
+        'executive': '<span class="badge bg-danger-subtle text-danger">Executive</span>',
+        'senate': '<span class="badge bg-info-subtle text-info">Senate</span>',
+        'house_college': '<span class="badge bg-success-subtle text-success">College Rep</span>',
+        'house_party': '<span class="badge bg-warning-subtle text-warning">Party-List</span>'
+    };
+    return map[cat] || '';
+}
+</script>
+{% endblock %}

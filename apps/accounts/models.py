@@ -42,9 +42,9 @@ class Student(models.Model):
     )
     course: models.CharField = models.CharField(max_length=255)
     year: models.PositiveSmallIntegerField = models.PositiveSmallIntegerField()
-    has_voted: models.BooleanField = models.BooleanField(
+    is_admin: models.BooleanField = models.BooleanField(
         default=False,
-        db_index=True,
+        help_text="Designates whether this student has admin privileges.",
     )
     failed_attempts: models.PositiveIntegerField = models.PositiveIntegerField(
         default=0,

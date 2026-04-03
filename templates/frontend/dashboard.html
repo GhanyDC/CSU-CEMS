@@ -1,0 +1,242 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block navbar %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/dashboard/">
+            <i class="bi bi-ballot-fill"></i> CEMS
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link active" href="/dashboard/">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/ballot/">
+                        <i class="bi bi-pencil-square"></i> Vote
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/results/">
+                        <i class="bi bi-bar-chart-fill"></i> Results
+                    </a>
+                </li>
+                <li class="nav-item d-none" id="nav-admin">
+                    <a class="nav-link" href="/admin-panel/">
+                        <i class="bi bi-gear-fill"></i> Admin
+                    </a>
+                </li>
+            </ul>
+            <div class="navbar-text text-white me-3">
+                <i class="bi bi-person-circle"></i>
+                <span id="nav-user-name">Student</span>
+            </div>
+            <button class="btn btn-outline-light btn-sm" id="logout-btn">
+                <i class="bi bi-box-arrow-right"></i> Logout
+            </button>
+        </div>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<!-- Welcome Banner -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card bg-primary text-white border-0 shadow">
+            <div class="card-body p-4">
+                <h3 class="mb-1"><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
+                <p class="mb-0 opacity-75">Campus Election Management System — Your vote matters.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="bi bi-calendar-event text-primary" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Election Status</h5>
+                <div id="election-status-badge">
+                    <span class="badge bg-secondary fs-6">Loading...</span>
+                </div>
+                <p class="text-muted mt-2 mb-0" id="election-name-text">—</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="bi bi-check2-circle text-success" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Your Vote</h5>
+                <div id="vote-status-badge">
+                    <span class="badge bg-secondary fs-6">Loading...</span>
+                </div>
+                <p class="text-muted mt-2 mb-0" id="vote-status-text">—</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="bi bi-clock text-warning" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Time Remaining</h5>
+                <div id="time-remaining">
+                    <span class="badge bg-secondary fs-6">—</span>
+                </div>
+                <p class="text-muted mt-2 mb-0" id="time-detail-text">—</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row g-4">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5><i class="bi bi-lightning-fill text-warning"></i> Quick Actions</h5>
+                <div class="d-grid gap-2 mt-3">
+                    <a href="/ballot/" class="btn btn-primary btn-lg" id="vote-now-btn">
+                        <i class="bi bi-pencil-square"></i> Cast Your Vote
+                    </a>
+                    <a href="/results/" class="btn btn-outline-primary btn-lg">
+                        <i class="bi bi-bar-chart-fill"></i> View Results
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5><i class="bi bi-info-circle text-info"></i> Election Information</h5>
+                <div id="election-info" class="mt-3">
+                    <div class="text-muted">Loading election details...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(async function() {
+    const user = CEMS.getUser();
+    if (!user) { window.location.href = '/'; return; }
+
+    document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
+    document.getElementById('welcome-name').textContent = user.full_name || user.student_id;
+
+    if (user.is_admin) {
+        document.getElementById('nav-admin').classList.remove('d-none');
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
+
+    // Fetch election status
+    try {
+        const status = await CEMS.api('/api/elections/status/');
+        if (status.has_active_election) {
+            document.getElementById('election-status-badge').innerHTML =
+                '<span class="badge bg-success fs-6"><i class="bi bi-broadcast"></i> Active</span>';
+            document.getElementById('election-name-text').textContent = status.election_name || '';
+
+            if (status.has_voted) {
+                document.getElementById('vote-status-badge').innerHTML =
+                    '<span class="badge bg-success fs-6"><i class="bi bi-check-lg"></i> Voted</span>';
+                document.getElementById('vote-status-text').textContent = 'Your ballot has been recorded.';
+                document.getElementById('vote-now-btn').classList.add('disabled');
+                document.getElementById('vote-now-btn').innerHTML =
+                    '<i class="bi bi-check-circle"></i> Already Voted';
+            } else {
+                document.getElementById('vote-status-badge').innerHTML =
+                    '<span class="badge bg-warning fs-6"><i class="bi bi-exclamation-triangle"></i> Not Yet</span>';
+                document.getElementById('vote-status-text').textContent = 'You haven\'t voted yet. Cast your ballot now!';
+            }
+
+            // Try to get election details
+            try {
+                const elData = await CEMS.api('/api/elections/current/');
+                if (elData.success && elData.election) {
+                    const el = elData.election;
+                    const end = new Date(el.end_time);
+                    const now = new Date();
+                    const diff = end - now;
+
+                    if (diff > 0) {
+                        const hours = Math.floor(diff / 3600000);
+                        const mins = Math.floor((diff % 3600000) / 60000);
+                        document.getElementById('time-remaining').innerHTML =
+                            `<span class="badge bg-warning fs-6">${hours}h ${mins}m</span>`;
+                        document.getElementById('time-detail-text').textContent =
+                            `Ends: ${end.toLocaleString()}`;
+                    } else {
+                        document.getElementById('time-remaining').innerHTML =
+                            '<span class="badge bg-danger fs-6">Ended</span>';
+                    }
+
+                    const posCount = el.positions ? el.positions.length : 0;
+                    let totalCands = 0;
+                    if (el.positions) {
+                        el.positions.forEach(p => totalCands += (p.candidates ? p.candidates.length : 0));
+                    }
+                    document.getElementById('election-info').innerHTML = `
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>Election</span>
+                                <strong>${CEMS.escapeHtml(el.name)}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>Positions</span>
+                                <strong>${posCount}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>Candidates</span>
+                                <strong>${totalCands}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>Start</span>
+                                <strong>${new Date(el.start_time).toLocaleString()}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>End</span>
+                                <strong>${end.toLocaleString()}</strong>
+                            </li>
+                        </ul>`;
+                }
+            } catch (e) { /* election details optional */ }
+
+        } else {
+            document.getElementById('election-status-badge').innerHTML =
+                '<span class="badge bg-secondary fs-6"><i class="bi bi-pause-circle"></i> No Active Election</span>';
+            document.getElementById('election-name-text').textContent = 'Check back later.';
+            document.getElementById('vote-status-badge').innerHTML =
+                '<span class="badge bg-secondary fs-6">N/A</span>';
+            document.getElementById('vote-now-btn').classList.add('disabled');
+            document.getElementById('election-info').innerHTML =
+                '<p class="text-muted">No active election at this time.</p>';
+        }
+    } catch (err) {
+        CEMS.showToast('Error loading dashboard: ' + err.message, 'danger');
+    }
+})();
+</script>
+{% endblock %}

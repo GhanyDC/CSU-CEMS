@@ -3,12 +3,14 @@ Elections views — election info, lifecycle management, and results endpoints.
 """
 import json
 import logging
+import uuid as uuid_mod
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.accounts.decorators import login_required_student
+from apps.accounts.decorators import admin_required, login_required_student
+from apps.accounts.utils import get_client_ip
 from apps.elections.models import Election, Position, Candidate
 from apps.elections.services import (
     ElectionLifecycleService,
@@ -18,13 +20,6 @@ from apps.elections.services import (
 from apps.voting.models import Ballot
 
 logger = logging.getLogger("cems.application")
-
-
-def _get_client_ip(request):
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "0.0.0.0")
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +169,7 @@ def election_results(request, election_id=None):
 @require_POST
 @csrf_protect
 @login_required_student
+@admin_required
 def start_election(request):
     """
     POST /api/admin/elections/start/
@@ -187,6 +183,7 @@ def start_election(request):
 @require_POST
 @csrf_protect
 @login_required_student
+@admin_required
 def close_election(request):
     """
     POST /api/admin/elections/close/
@@ -200,6 +197,7 @@ def close_election(request):
 @require_POST
 @csrf_protect
 @login_required_student
+@admin_required
 def publish_results(request):
     """
     POST /api/admin/elections/publish/
@@ -226,6 +224,13 @@ def _lifecycle_action(request, action_method):
         )
 
     try:
+        uuid_mod.UUID(str(election_id))
+    except (ValueError, AttributeError):
+        return JsonResponse(
+            {"success": False, "error": "Invalid election_id format."}, status=400
+        )
+
+    try:
         election = Election.objects.get(pk=election_id)
     except Election.DoesNotExist:
         return JsonResponse(
@@ -236,7 +241,7 @@ def _lifecycle_action(request, action_method):
         election = action_method(
             election,
             performed_by=request.student.student_id,
-            ip_address=_get_client_ip(request),
+            ip_address=get_client_ip(request),
             user_agent=request.META.get("HTTP_USER_AGENT", ""),
         )
     except InvalidTransitionError as e:

@@ -46,6 +46,7 @@ LOCAL_APPS: List[str] = [
     "apps.elections",
     "apps.voting",
     "apps.audit",
+    "apps.frontend",
 ]
 
 INSTALLED_APPS: List[str] = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -154,6 +155,11 @@ SECURE_SSL_REDIRECT: bool = True
 # ---------------------------------------------------------------------------
 CEMS_MAX_FAILED_ATTEMPTS: int = config("CEMS_MAX_FAILED_ATTEMPTS", default=5, cast=int)
 CEMS_LOCKOUT_MINUTES: int = config("CEMS_LOCKOUT_MINUTES", default=30, cast=int)
+
+# ---------------------------------------------------------------------------
+# Rate Limiting
+# ---------------------------------------------------------------------------
+RATELIMIT_ENABLE: bool = True
 
 # ---------------------------------------------------------------------------
 # Logging — imported from dedicated module to keep settings clean

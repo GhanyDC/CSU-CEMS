@@ -205,14 +205,21 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("\nPilot data generation complete."))
 
     def _create_candidates(self, position, count, college=None):
-        """Create random candidates for a position."""
+        """Create random candidates for a position with unique names."""
         candidates = []
-        for _ in range(count):
+        used_names = set()
+        attempts = 0
+        while len(candidates) < count and attempts < count * 10:
+            attempts += 1
             first = random.choice(FIRST_NAMES)
             last = random.choice(LAST_NAMES)
+            full_name = f"{first} {last}"
+            if full_name in used_names:
+                continue
+            used_names.add(full_name)
             candidates.append(Candidate(
                 position=position,
-                full_name=f"{first} {last}",
+                full_name=full_name,
                 party=random.choice(PARTIES),
                 college=college or random.choice(COLLEGES),
             ))

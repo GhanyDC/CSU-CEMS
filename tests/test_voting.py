@@ -108,14 +108,6 @@ class TestBallotCreation:
         assert ballot.hashed_student_id != self.student.student_id
         assert len(ballot.hashed_student_id) == 64  # SHA-256 hex
 
-    def test_student_marked_has_voted(self) -> None:
-        """After voting, student.has_voted is True."""
-        BallotService.cast_ballot(
-            self.student, self.election, [_sel(self.position, self.candidate)]
-        )
-        self.student.refresh_from_db()
-        assert self.student.has_voted is True
-
     def test_cannot_ballot_twice_same_election(self) -> None:
         """A student cannot submit two ballots for the same election."""
         BallotService.cast_ballot(

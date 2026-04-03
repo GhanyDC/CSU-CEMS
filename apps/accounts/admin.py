@@ -9,14 +9,15 @@ class StudentAdmin(admin.ModelAdmin):
     list_display = (
         "student_id",
         "full_name",
+        "college",
         "course",
         "year",
-        "has_voted",
+        "is_admin",
         "failed_attempts",
         "is_locked",
         "created_at",
     )
-    list_filter = ("has_voted", "course", "year")
+    list_filter = ("is_admin", "college", "course", "year")
     search_fields = ("student_id", "full_name")
     readonly_fields = ("id", "created_at", "updated_at")
     ordering = ("student_id",)

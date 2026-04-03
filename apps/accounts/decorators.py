@@ -34,3 +34,23 @@ def login_required_student(view_func):
         return view_func(request, *args, **kwargs)
 
     return wrapper
+
+
+def admin_required(view_func):
+    """
+    Decorator that ensures the authenticated student has admin privileges.
+
+    Must be applied AFTER ``login_required_student``.
+    Returns 403 JSON if the student is not an admin.
+    """
+
+    @functools.wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not getattr(request, "student", None) or not request.student.is_admin:
+            return JsonResponse(
+                {"success": False, "error": "Admin privileges required."},
+                status=403,
+            )
+        return view_func(request, *args, **kwargs)
+
+    return wrapper

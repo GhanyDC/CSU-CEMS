@@ -3,12 +3,14 @@ Voting views — ballot submission endpoint.
 """
 import json
 import logging
+import uuid as uuid_mod
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import login_required_student
+from apps.accounts.utils import get_client_ip
 from apps.elections.models import Election
 from apps.voting.services import (
     BallotAlreadyCastError,
@@ -18,13 +20,6 @@ from apps.voting.services import (
 )
 
 logger = logging.getLogger("cems.application")
-
-
-def _get_client_ip(request):
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "0.0.0.0")
 
 
 @require_POST
@@ -85,6 +80,13 @@ def cast_ballot(request):
 
     # Fetch election
     try:
+        uuid_mod.UUID(str(election_id))
+    except (ValueError, AttributeError):
+        return JsonResponse(
+            {"success": False, "error": "Invalid election_id format."}, status=400
+        )
+
+    try:
         election = Election.objects.get(pk=election_id)
     except Election.DoesNotExist:
         return JsonResponse(
@@ -97,7 +99,7 @@ def cast_ballot(request):
             student=request.student,
             election=election,
             selections=selections,
-            ip_address=_get_client_ip(request),
+            ip_address=get_client_ip(request),
             user_agent=request.META.get("HTTP_USER_AGENT", ""),
         )
     except ElectionNotActiveError as e:

@@ -20,6 +20,7 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from apps.accounts.models import Student
+from apps.accounts.utils import get_client_ip, get_user_agent
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 
@@ -28,18 +29,6 @@ logger = logging.getLogger("cems.login")
 # Generic message — NEVER reveal whether a student_id exists
 GENERIC_AUTH_ERROR: str = "Invalid credentials. Please try again."
 ACCOUNT_LOCKED_ERROR: str = "Account is temporarily locked. Please try again later."
-
-
-def _get_client_ip(request: Any) -> str:
-    """Extract client IP, respecting X-Forwarded-For behind a proxy."""
-    x_forwarded_for: Optional[str] = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "0.0.0.0")
-
-
-def _get_user_agent(request: Any) -> str:
-    return request.META.get("HTTP_USER_AGENT", "")
 
 
 @require_POST
@@ -61,8 +50,8 @@ def student_login(request: Any) -> JsonResponse:
     """
     import json
 
-    ip_address: str = _get_client_ip(request)
-    user_agent: str = _get_user_agent(request)
+    ip_address: str = get_client_ip(request)
+    user_agent: str = get_user_agent(request)
 
     # --- Parse input ---
     try:
@@ -164,7 +153,22 @@ def student_login(request: Any) -> JsonResponse:
             "success": True,
             "student_id": student.student_id,
             "full_name": student.full_name,
-            "has_voted": student.has_voted,
+            "is_admin": student.is_admin,
         },
+        status=200,
+    )
+
+
+@require_POST
+def student_logout(request: Any) -> JsonResponse:
+    """
+    End the current session.
+
+    POST /api/auth/logout/
+    Returns JSON: {"success": true, "message": "Logged out successfully."}
+    """
+    request.session.flush()
+    return JsonResponse(
+        {"success": True, "message": "Logged out successfully."},
         status=200,
     )

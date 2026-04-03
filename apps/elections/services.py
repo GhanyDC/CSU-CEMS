@@ -4,6 +4,7 @@ Election services — lifecycle management and result computation.
 import logging
 from collections import defaultdict
 
+from django.db import models, transaction
 from django.db.models import Count
 
 from apps.audit.models import AuditLog
@@ -48,6 +49,7 @@ class ElectionLifecycleService:
     }
 
     @classmethod
+    @transaction.atomic
     def transition(
         cls,
         election: Election,
@@ -59,6 +61,8 @@ class ElectionLifecycleService:
     ) -> Election:
         """
         Advance an election to the next valid status.
+
+        Uses select_for_update to prevent concurrent transitions.
 
         Args:
             election:       The Election instance to transition.
@@ -73,6 +77,9 @@ class ElectionLifecycleService:
         Raises:
             InvalidTransitionError: If the transition is not valid.
         """
+        # Lock the election row to prevent race conditions
+        election = Election.objects.select_for_update().get(pk=election.pk)
+
         allowed_next = cls._TRANSITIONS.get(election.status)
 
         if allowed_next is None or allowed_next != target_status:

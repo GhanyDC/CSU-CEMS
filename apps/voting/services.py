@@ -185,11 +185,7 @@ class BallotService:
         ]
         BallotSelection.objects.bulk_create(ballot_selections)
 
-        # 10. Mark student as having voted
-        locked_student.has_voted = True
-        locked_student.save(update_fields=["has_voted"])
-
-        # 11. Audit log
+        # 10. Audit log
         AuditService.log_event(
             student_id_attempted=locked_student.student_id,
             event_type=AuditLog.EventType.VOTE_CAST,
@@ -209,7 +205,3 @@ class BallotService:
             len(resolved_selections),
         )
         return ballot
-
-
-# Backward compatibility alias
-VotingService = BallotService

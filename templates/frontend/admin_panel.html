@@ -1,0 +1,325 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Admin Panel{% endblock %}
+
+{% block navbar %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/dashboard/">
+            <i class="bi bi-ballot-fill"></i> CEMS
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item"><a class="nav-link" href="/dashboard/"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link" href="/ballot/"><i class="bi bi-pencil-square"></i> Vote</a></li>
+                <li class="nav-item"><a class="nav-link" href="/results/"><i class="bi bi-bar-chart-fill"></i> Results</a></li>
+                <li class="nav-item"><a class="nav-link active" href="/admin-panel/"><i class="bi bi-gear-fill"></i> Admin</a></li>
+            </ul>
+            <div class="navbar-text text-white me-3">
+                <i class="bi bi-shield-lock"></i> <span id="nav-user-name">Admin</span>
+            </div>
+            <button class="btn btn-outline-light btn-sm" id="logout-btn"><i class="bi bi-box-arrow-right"></i> Logout</button>
+        </div>
+    </div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<!-- Access Denied (shown to non-admins) -->
+<div class="alert alert-danger d-none" id="access-denied">
+    <i class="bi bi-shield-x"></i>
+    <strong>Access Denied.</strong> You do not have admin privileges.
+    <a href="/dashboard/" class="alert-link">Return to dashboard &rarr;</a>
+</div>
+
+<div id="admin-content" class="d-none">
+    <div class="d-flex align-items-center mb-4">
+        <a href="/dashboard/" class="btn btn-outline-secondary me-3"><i class="bi bi-arrow-left"></i></a>
+        <div>
+            <h2 class="mb-0"><i class="bi bi-gear-fill text-dark"></i> Election Administration</h2>
+            <p class="text-muted mb-0">Manage election lifecycle transitions</p>
+        </div>
+    </div>
+
+    <!-- Election State Machine -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Election State Machine</h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex align-items-center justify-content-center flex-wrap gap-2 py-3">
+                <div class="state-node" id="state-draft">
+                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
+                        <i class="bi bi-file-earmark"></i> DRAFT
+                    </span>
+                </div>
+                <i class="bi bi-arrow-right text-muted fs-4"></i>
+                <div class="state-node" id="state-active">
+                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
+                        <i class="bi bi-broadcast"></i> ACTIVE
+                    </span>
+                </div>
+                <i class="bi bi-arrow-right text-muted fs-4"></i>
+                <div class="state-node" id="state-closed">
+                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
+                        <i class="bi bi-lock"></i> CLOSED
+                    </span>
+                </div>
+                <i class="bi bi-arrow-right text-muted fs-4"></i>
+                <div class="state-node" id="state-published">
+                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
+                        <i class="bi bi-megaphone"></i> PUBLISHED
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Election Details -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle text-primary"></i> Election Details</h5>
+                </div>
+                <div class="card-body" id="election-details">
+                    <div class="text-muted">Loading...</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-lightning text-warning"></i> Lifecycle Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-3" id="lifecycle-actions">
+                        <button class="btn btn-success btn-lg" id="btn-start" onclick="transitionElection('start')" disabled>
+                            <i class="bi bi-play-fill"></i> Start Election (DRAFT → ACTIVE)
+                        </button>
+                        <button class="btn btn-warning btn-lg" id="btn-close" onclick="transitionElection('close')" disabled>
+                            <i class="bi bi-stop-fill"></i> Close Election (ACTIVE → CLOSED)
+                        </button>
+                        <button class="btn btn-info btn-lg" id="btn-publish" onclick="transitionElection('publish')" disabled>
+                            <i class="bi bi-megaphone-fill"></i> Publish Results (CLOSED → PUBLISHED)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Log -->
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0"><i class="bi bi-journal-text text-secondary"></i> Action Log</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm" id="action-log-table">
+                    <thead><tr><th>Time</th><th>Action</th><th>Result</th></tr></thead>
+                    <tbody id="action-log-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentElection = null;
+
+(async function() {
+    const user = CEMS.getUser();
+    if (!user) { window.location.href = '/'; return; }
+    document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
+    document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
+
+    if (!user.is_admin) {
+        document.getElementById('access-denied').classList.remove('d-none');
+        return;
+    }
+
+    document.getElementById('admin-content').classList.remove('d-none');
+    await loadElectionState();
+})();
+
+async function loadElectionState() {
+    try {
+        // Try to get current active election
+        let elData = null;
+        try {
+            const res = await CEMS.api('/api/elections/current/');
+            if (res.success) elData = res.election;
+        } catch (e) { /* no active election */ }
+
+        // Try results endpoint for published elections
+        if (!elData) {
+            try {
+                const res = await CEMS.api('/api/elections/results/');
+                if (res.success) {
+                    currentElection = { id: res.election_id, name: res.election, status: 'published' };
+                }
+            } catch (e) { /* no published election either */ }
+        }
+
+        // Try status
+        const status = await CEMS.api('/api/elections/status/');
+        if (status.has_active_election) {
+            currentElection = { id: status.election_id, name: status.election_name, status: 'active' };
+            if (elData) {
+                currentElection.start_time = elData.start_time;
+                currentElection.end_time = elData.end_time;
+                currentElection.positions = elData.positions;
+            }
+        }
+
+        // If still no election, we need to indicate no info available
+        if (!currentElection) {
+            // Could be draft or closed - not visible via student APIs
+            document.getElementById('election-details').innerHTML = `
+                <div class="alert alert-info mb-0">
+                    <i class="bi bi-info-circle"></i>
+                    Election may be in DRAFT or CLOSED state. Use the buttons to attempt transitions.
+                    <br><small class="text-muted">Enter the Election UUID manually if needed.</small>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label fw-semibold">Election UUID</label>
+                    <input type="text" class="form-control" id="manual-election-id"
+                           placeholder="paste election UUID here">
+                </div>`;
+            enableButtons('draft');
+            return;
+        }
+
+        updateUI();
+    } catch (err) {
+        CEMS.showToast('Error: ' + err.message, 'danger');
+    }
+}
+
+function updateUI() {
+    if (!currentElection) return;
+
+    const el = currentElection;
+    const st = el.status || 'unknown';
+
+    // Highlight active state
+    ['draft', 'active', 'closed', 'published'].forEach(s => {
+        const node = document.getElementById(`state-${s}`);
+        const badge = node.querySelector('.badge');
+        badge.className = `badge rounded-pill fs-6 px-3 py-2 ${s === st ? 'bg-primary' : 'bg-secondary'}`;
+    });
+
+    // Election details
+    let detailsHtml = `
+        <ul class="list-group list-group-flush">
+            <li class="list-group-item d-flex justify-content-between">
+                <span>Name</span><strong>${CEMS.escapeHtml(el.name || '—')}</strong>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+                <span>Status</span>
+                <span class="badge ${getStatusClass(st)} fs-6">${st.toUpperCase()}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+                <span>UUID</span><code class="small">${el.id || '—'}</code>
+            </li>`;
+    if (el.start_time) {
+        detailsHtml += `<li class="list-group-item d-flex justify-content-between">
+            <span>Start</span><strong>${new Date(el.start_time).toLocaleString()}</strong></li>`;
+    }
+    if (el.end_time) {
+        detailsHtml += `<li class="list-group-item d-flex justify-content-between">
+            <span>End</span><strong>${new Date(el.end_time).toLocaleString()}</strong></li>`;
+    }
+    if (el.positions) {
+        detailsHtml += `<li class="list-group-item d-flex justify-content-between">
+            <span>Positions</span><strong>${el.positions.length}</strong></li>`;
+    }
+    detailsHtml += '</ul>';
+    document.getElementById('election-details').innerHTML = detailsHtml;
+
+    enableButtons(st);
+}
+
+function getStatusClass(st) {
+    return { draft: 'bg-secondary', active: 'bg-success', closed: 'bg-warning text-dark', published: 'bg-info' }[st] || 'bg-secondary';
+}
+
+function enableButtons(status) {
+    document.getElementById('btn-start').disabled = (status !== 'draft');
+    document.getElementById('btn-close').disabled = (status !== 'active');
+    document.getElementById('btn-publish').disabled = (status !== 'closed');
+}
+
+function getElectionId() {
+    if (currentElection && currentElection.id) return currentElection.id;
+    const manualInput = document.getElementById('manual-election-id');
+    return manualInput ? manualInput.value.trim() : null;
+}
+
+async function transitionElection(action) {
+    const elId = getElectionId();
+    if (!elId) {
+        CEMS.showToast('No election ID available. Paste UUID manually.', 'warning');
+        return;
+    }
+
+    const actionMap = {
+        start: { url: '/api/admin/elections/start/', label: 'Start Election', confirm: 'Start the election? Students will be able to vote.' },
+        close: { url: '/api/admin/elections/close/', label: 'Close Election', confirm: 'Close the election? No more votes will be accepted.' },
+        publish: { url: '/api/admin/elections/publish/', label: 'Publish Results', confirm: 'Publish results? This is permanent and cannot be undone.' }
+    };
+
+    const cfg = actionMap[action];
+    if (!confirm(cfg.confirm)) return;
+
+    const btn = document.getElementById(`btn-${action}`);
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Processing...`;
+
+    try {
+        const res = await CEMS.api(cfg.url, {
+            method: 'POST',
+            body: JSON.stringify({ election_id: elId })
+        });
+
+        addLogEntry(cfg.label, res.success, res.error || `Status: ${res.status}`);
+
+        if (res.success) {
+            CEMS.showToast(`${cfg.label} succeeded! New status: ${res.status}`, 'success');
+            if (currentElection) currentElection.status = res.status;
+            updateUI();
+        } else {
+            CEMS.showToast(res.error || 'Action failed.', 'danger');
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
+        }
+    } catch (err) {
+        addLogEntry(cfg.label, false, err.message);
+        CEMS.showToast('Error: ' + err.message, 'danger');
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+    }
+}
+
+function addLogEntry(action, success, detail) {
+    const tbody = document.getElementById('action-log-body');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td class="text-muted small">${new Date().toLocaleTimeString()}</td>
+        <td>${CEMS.escapeHtml(action)}</td>
+        <td>${success
+            ? '<span class="badge bg-success">Success</span>'
+            : `<span class="badge bg-danger">Failed</span> <small class="text-muted">${CEMS.escapeHtml(detail)}</small>`
+        }</td>`;
+    tbody.insertBefore(row, tbody.firstChild);
+}
+</script>
+{% endblock %}
