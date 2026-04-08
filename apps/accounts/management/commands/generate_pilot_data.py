@@ -23,8 +23,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import AdminProfile, AdminRole, Student
+from apps.audit.models import AuditLog
 from apps.elections.models import Candidate, Election, EligibleVoter, Position, VerificationRecord
 from apps.elections.constants import OFFICIAL_COLLEGES
+from apps.voting.models import Ballot, BallotSelection
 
 COLLEGES = list(OFFICIAL_COLLEGES)
 
@@ -97,12 +99,18 @@ class Command(BaseCommand):
 
         if clear:
             self.stdout.write(self.style.WARNING("Clearing existing data..."))
+            # Delete in safe FK-dependency order:
+            # BallotSelection → Ballot (PROTECT on Candidate/Position)
+            # must go before Candidate/Position/Election
+            BallotSelection.objects.all().delete()
+            Ballot.objects.all().delete()
             EligibleVoter.objects.all().delete()
             VerificationRecord.objects.all().delete()
             Candidate.objects.all().delete()
             Position.objects.all().delete()
             Election.objects.all().delete()
             Student.objects.all().delete()
+            AuditLog.objects.all().delete()
             # Remove pilot admin users/profiles (only those created by this command)
             for uname in ("eb_head", "operator1", "tally_watcher1"):
                 User.objects.filter(username=uname).delete()

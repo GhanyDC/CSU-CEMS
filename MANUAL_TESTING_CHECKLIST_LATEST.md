@@ -46,7 +46,7 @@ python manage.py runserver --settings=config.settings.local
 
 | # | Step | Expected |
 |---|------|----------|
-| C1 | Navigate to `http://localhost:8000/admin/login/` | Admin login page loads |
+| C1 | Navigate to `http://localhost:8000/election-admin/login/` | Admin login page loads |
 | C2 | Enter `eb_head` / `pilot_admin_pass` | Redirect to `/admin-panel/` |
 | C3 | Admin panel shows election list with 1 DRAFT election | Election visible |
 | C4 | Click the election row | Detail view with Overview, Candidates, Voter Roll, Readiness, Lifecycle tabs |

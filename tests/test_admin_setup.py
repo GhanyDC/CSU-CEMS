@@ -863,9 +863,27 @@ class TestAdminPanelPage:
     def test_admin_page_requires_auth(self):
         client = Client()
         resp = client.get("/admin-panel/")
-        # Should redirect to admin login
+        # Should redirect to the custom election-admin login (not Django admin)
         assert resp.status_code == 302
-        assert "/admin/login/" in resp.url
+        assert "/election-admin/login/" in resp.url
+
+    def test_election_admin_login_page_loads(self):
+        """GET /election-admin/login/ must serve the custom CEMS admin login page."""
+        client = Client()
+        resp = client.get("/election-admin/login/")
+        assert resp.status_code == 200
+        # Custom admin login form — not Django's built-in admin
+        assert b"admin-login-form" in resp.content
+        assert b"CEMS Admin" in resp.content
+
+    def test_django_admin_still_independent(self):
+        """Django built-in /admin/ must remain accessible and separate."""
+        client = Client()
+        resp = client.get("/admin/")
+        # Django admin returns redirect to its own login
+        assert resp.status_code in (200, 302)
+        # Must NOT render the CEMS admin template
+        assert b"admin-login-form" not in resp.content
 
     def test_admin_page_renders_for_operator(self):
         user, _ = create_admin_user("op", role=AdminRole.ELECTORAL_BOARD_OPERATOR)

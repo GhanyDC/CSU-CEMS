@@ -13,7 +13,8 @@ import pytest
 from django.core.management import call_command, CommandError
 
 from apps.accounts.models import Student
-from apps.elections.models import Candidate, Election, Position
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
+from apps.voting.models import Ballot, BallotSelection
 
 
 # ── import_students ───────────────────────────────────────────────────────────
@@ -184,3 +185,51 @@ class TestGeneratePilotDataCommand:
         call_command("generate_pilot_data", students=5)
         election = Election.objects.first()
         assert election.status == Election.Status.DRAFT
+
+    def test_clear_after_ballots_exist(self):
+        """--clear must succeed even when ballots reference candidates/positions."""
+        call_command("generate_pilot_data", students=5, clear=True)
+        election = Election.objects.first()
+        position = Position.objects.filter(election=election).first()
+        candidate = Candidate.objects.filter(position=position).first()
+        student = Student.objects.first()
+
+        # Student is already on voter roll from generate_pilot_data; cast a ballot
+        hashed = Ballot.hash_student_id(student.student_id, str(election.pk))
+        ballot = Ballot.objects.create(
+            election=election, hashed_student_id=hashed,
+        )
+        BallotSelection.objects.create(
+            ballot=ballot, position=position, candidate=candidate,
+        )
+
+        # This previously raised ProtectedError
+        call_command("generate_pilot_data", students=5, clear=True)
+
+        # Verify clean slate
+        assert Ballot.objects.count() == 0
+        assert BallotSelection.objects.count() == 0
+        assert Student.objects.count() == 5
+        assert Election.objects.count() == 1
+
+    def test_generate_clear_generate_repeatability(self):
+        """Running generate → clear → generate must not raise errors."""
+        call_command("generate_pilot_data", students=5, clear=True)
+        assert Election.objects.count() == 1
+        first_election_pk = Election.objects.first().pk
+
+        call_command("generate_pilot_data", students=10, clear=True)
+        assert Election.objects.count() == 1
+        assert Student.objects.count() == 10
+        # New election should have a different PK
+        assert Election.objects.first().pk != first_election_pk
+
+    def test_clear_removes_voter_roll(self):
+        """--clear must remove EligibleVoter records along with everything else."""
+        call_command("generate_pilot_data", students=5, clear=True)
+        assert EligibleVoter.objects.count() > 0
+
+        call_command("generate_pilot_data", students=5, clear=True)
+        # New voter roll should exist for the new election only
+        election = Election.objects.first()
+        assert EligibleVoter.objects.filter(election=election).count() == 5
