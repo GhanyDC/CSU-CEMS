@@ -6,7 +6,10 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.accounts.urls import admin_auth_urlpatterns
-from apps.elections.views import close_election, publish_results, start_election
+from apps.elections.views import (
+    close_election, election_tally_review, election_turnout,
+    publish_results, start_election,
+)
 
 urlpatterns: list = [
     path("admin/", admin.site.urls),
@@ -20,6 +23,9 @@ urlpatterns: list = [
     path("api/admin/elections/start/", start_election, name="election-start"),
     path("api/admin/elections/close/", close_election, name="election-close"),
     path("api/admin/elections/publish/", publish_results, name="election-publish"),
+    # Admin monitoring endpoints
+    path("api/admin/elections/<uuid:election_id>/turnout/", election_turnout, name="election-turnout"),
+    path("api/admin/elections/<uuid:election_id>/tally/", election_tally_review, name="election-tally"),
     # Admin election setup endpoints (Operator + EB Head)
     path("api/admin/elections/setup/", include("apps.elections.admin_urls", namespace="admin_elections")),
     # Frontend UI

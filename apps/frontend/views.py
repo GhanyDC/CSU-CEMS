@@ -37,23 +37,25 @@ def _get_admin_profile(request) -> Optional[AdminProfile]:
         return None
 
 
+def _build_student_context(student: Student) -> dict:
+    """Build the server-bootstrapped context for student pages."""
+    return {
+        "bootstrap_user": {
+            "student_id": student.student_id,
+            "full_name": student.full_name,
+            "college": student.college,
+            "is_admin": student.is_admin,
+        }
+    }
+
+
 def _render_authenticated_page(request, template_name: str):
     """Render a protected page with server-bootstrapped user context."""
     student = _get_authenticated_student(request)
     if student is None:
         return redirect("frontend:login")
 
-    return render(
-        request,
-        template_name,
-        {
-            "bootstrap_user": {
-                "student_id": student.student_id,
-                "full_name": student.full_name,
-                "is_admin": student.is_admin,
-            }
-        },
-    )
+    return render(request, template_name, _build_student_context(student))
 
 
 def login_page(request):

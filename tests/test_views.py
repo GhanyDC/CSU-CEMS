@@ -91,6 +91,7 @@ class TestCurrentElectionView:
         election = make_election()
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(student, election)
         client = auth_client(student)
 
         response = client.get("/api/elections/current/")
@@ -110,6 +111,7 @@ class TestCurrentElectionView:
         inactive = make_candidate(pos, full_name="Inactive")
         inactive.is_active = False
         inactive.save()
+        make_eligible(student, election)
         client = auth_client(student)
 
         response = client.get("/api/elections/current/")
@@ -145,7 +147,8 @@ class TestVotingStatusView:
 
     def test_has_not_voted(self):
         student = make_student()
-        make_election()
+        election = make_election()
+        make_eligible(student, election)
         client = auth_client(student)
         response = client.get("/api/elections/status/")
         data = response.json()
@@ -157,6 +160,7 @@ class TestVotingStatusView:
         election = make_election()
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(student, election)
         # Create a ballot for this student
         hashed = Ballot.hash_student_id(student.student_id, str(election.pk))
         Ballot.objects.create(election=election, hashed_student_id=hashed)
@@ -189,6 +193,7 @@ class TestElectionResultsView:
         election = make_election(status=Election.Status.PUBLISHED)
         pos = make_position(election)
         make_candidate(pos)
+        make_eligible(student, election)
         client = auth_client(student)
 
         response = client.get("/api/elections/results/")
@@ -202,6 +207,7 @@ class TestElectionResultsView:
         election = make_election(status=Election.Status.PUBLISHED)
         pos = make_position(election)
         make_candidate(pos)
+        make_eligible(student, election)
         client = auth_client(student)
 
         response = client.get(f"/api/elections/results/{election.pk}/")
@@ -210,6 +216,7 @@ class TestElectionResultsView:
     def test_unpublished_election_by_id_returns_403(self):
         student = make_student()
         election = make_election(status=Election.Status.ACTIVE)
+        make_eligible(student, election)
         client = auth_client(student)
 
         response = client.get(f"/api/elections/results/{election.pk}/")

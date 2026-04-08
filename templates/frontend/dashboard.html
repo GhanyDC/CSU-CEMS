@@ -111,14 +111,9 @@
     <div class="col-md-6">
         <div class="card border-0 shadow-sm">
             <div class="card-body">
-                <h5><i class="bi bi-lightning-fill text-warning"></i> Quick Actions</h5>
-                <div class="d-grid gap-2 mt-3">
-                    <a href="/ballot/" class="btn btn-primary btn-lg" id="vote-now-btn">
-                        <i class="bi bi-pencil-square"></i> Cast Your Vote
-                    </a>
-                    <a href="/results/" class="btn btn-outline-primary btn-lg">
-                        <i class="bi bi-bar-chart-fill"></i> View Results
-                    </a>
+                <h5><i class="bi bi-lightning-fill text-warning"></i> Your Elections</h5>
+                <div id="elections-list" class="mt-3">
+                    <div class="text-muted">Loading your elections...</div>
                 </div>
             </div>
         </div>
@@ -151,89 +146,127 @@
 
     document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
 
-    // Fetch election status
+    // Fetch eligible elections via the new /api/elections/mine/ endpoint
     try {
-        const status = await CEMS.api('/api/elections/status/');
-        if (status.has_active_election) {
-            document.getElementById('election-status-badge').innerHTML =
-                '<span class="badge bg-success fs-6"><i class="bi bi-broadcast"></i> Active</span>';
-            document.getElementById('election-name-text').textContent = status.election_name || '';
+        const data = await CEMS.api('/api/elections/mine/');
+        const elections = data.elections || [];
 
-            if (status.has_voted) {
+        const activeElections = elections.filter(e => e.status === 'active');
+        const publishedElections = elections.filter(e => e.status === 'published');
+
+        // Update status cards
+        if (activeElections.length > 0) {
+            document.getElementById('election-status-badge').innerHTML =
+                `<span class="badge bg-success fs-6"><i class="bi bi-broadcast"></i> ${activeElections.length} Active</span>`;
+            document.getElementById('election-name-text').textContent =
+                activeElections.map(e => e.name).join(', ');
+
+            const allVoted = activeElections.every(e => e.has_voted);
+            const someVoted = activeElections.some(e => e.has_voted);
+
+            if (allVoted) {
                 document.getElementById('vote-status-badge').innerHTML =
-                    '<span class="badge bg-success fs-6"><i class="bi bi-check-lg"></i> Voted</span>';
-                document.getElementById('vote-status-text').textContent = 'Your ballot has been recorded.';
-                document.getElementById('vote-now-btn').classList.add('disabled');
-                document.getElementById('vote-now-btn').innerHTML =
-                    '<i class="bi bi-check-circle"></i> Already Voted';
+                    '<span class="badge bg-success fs-6"><i class="bi bi-check-lg"></i> All Voted</span>';
+                document.getElementById('vote-status-text').textContent = 'You have voted in all eligible elections.';
+            } else if (someVoted) {
+                document.getElementById('vote-status-badge').innerHTML =
+                    '<span class="badge bg-warning fs-6"><i class="bi bi-exclamation-triangle"></i> Partially Voted</span>';
+                document.getElementById('vote-status-text').textContent = 'You still have elections to vote in.';
             } else {
                 document.getElementById('vote-status-badge').innerHTML =
                     '<span class="badge bg-warning fs-6"><i class="bi bi-exclamation-triangle"></i> Not Yet</span>';
-                document.getElementById('vote-status-text').textContent = 'You haven\'t voted yet. Cast your ballot now!';
+                document.getElementById('vote-status-text').textContent = "You haven't voted yet. Cast your ballot now!";
             }
 
-            // Try to get election details
-            try {
-                const elData = await CEMS.api('/api/elections/current/');
-                if (elData.success && elData.election) {
-                    const el = elData.election;
-                    const end = new Date(el.end_time);
-                    const now = new Date();
-                    const diff = end - now;
-
-                    if (diff > 0) {
-                        const hours = Math.floor(diff / 3600000);
-                        const mins = Math.floor((diff % 3600000) / 60000);
-                        document.getElementById('time-remaining').innerHTML =
-                            `<span class="badge bg-warning fs-6">${hours}h ${mins}m</span>`;
-                        document.getElementById('time-detail-text').textContent =
-                            `Ends: ${end.toLocaleString()}`;
-                    } else {
-                        document.getElementById('time-remaining').innerHTML =
-                            '<span class="badge bg-danger fs-6">Ended</span>';
-                    }
-
-                    const posCount = el.positions ? el.positions.length : 0;
-                    let totalCands = 0;
-                    if (el.positions) {
-                        el.positions.forEach(p => totalCands += (p.candidates ? p.candidates.length : 0));
-                    }
-                    document.getElementById('election-info').innerHTML = `
-                        <ul class="list-group list-group-flush">
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>Election</span>
-                                <strong>${CEMS.escapeHtml(el.name)}</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>Positions</span>
-                                <strong>${posCount}</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>Candidates</span>
-                                <strong>${totalCands}</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>Start</span>
-                                <strong>${new Date(el.start_time).toLocaleString()}</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>End</span>
-                                <strong>${end.toLocaleString()}</strong>
-                            </li>
-                        </ul>`;
-                }
-            } catch (e) { /* election details optional */ }
-
+            // Time remaining from first active election
+            const firstEnd = new Date(activeElections[0].end_time);
+            const diff = firstEnd - new Date();
+            if (diff > 0) {
+                const hours = Math.floor(diff / 3600000);
+                const mins = Math.floor((diff % 3600000) / 60000);
+                document.getElementById('time-remaining').innerHTML =
+                    `<span class="badge bg-warning fs-6">${hours}h ${mins}m</span>`;
+                document.getElementById('time-detail-text').textContent =
+                    `Ends: ${firstEnd.toLocaleString()}`;
+            } else {
+                document.getElementById('time-remaining').innerHTML =
+                    '<span class="badge bg-danger fs-6">Ended</span>';
+            }
+        } else if (publishedElections.length > 0) {
+            document.getElementById('election-status-badge').innerHTML =
+                '<span class="badge bg-info fs-6"><i class="bi bi-check-circle"></i> Results Available</span>';
+            document.getElementById('election-name-text').textContent = publishedElections[0].name;
+            document.getElementById('vote-status-badge').innerHTML =
+                '<span class="badge bg-secondary fs-6">Completed</span>';
+            document.getElementById('vote-status-text').textContent = 'View published results.';
         } else {
             document.getElementById('election-status-badge').innerHTML =
-                '<span class="badge bg-secondary fs-6"><i class="bi bi-pause-circle"></i> No Active Election</span>';
-            document.getElementById('election-name-text').textContent = 'Check back later.';
+                '<span class="badge bg-secondary fs-6"><i class="bi bi-pause-circle"></i> No Elections</span>';
+            document.getElementById('election-name-text').textContent = 'No active elections for you right now.';
             document.getElementById('vote-status-badge').innerHTML =
                 '<span class="badge bg-secondary fs-6">N/A</span>';
-            document.getElementById('vote-now-btn').classList.add('disabled');
-            document.getElementById('election-info').innerHTML =
-                '<p class="text-muted">No active election at this time.</p>';
         }
+
+        // Render election cards
+        const listContainer = document.getElementById('elections-list');
+        if (elections.length === 0) {
+            listContainer.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    <i class="bi bi-info-circle-fill"></i>
+                    You are not currently eligible for any active elections.
+                    If you believe this is an error, contact the Electoral Board.
+                </div>`;
+        } else {
+            let html = '';
+            for (const e of elections) {
+                const typeLabel = e.election_type === 'campus' ? 'Campus' : `College (${CEMS.escapeHtml(e.college)})`;
+                let statusBadge, actionBtn;
+
+                if (e.status === 'active' && e.has_voted) {
+                    statusBadge = '<span class="badge bg-success">Voted</span>';
+                    actionBtn = `<span class="text-success"><i class="bi bi-check-circle-fill"></i> Ballot Submitted</span>`;
+                } else if (e.status === 'active') {
+                    statusBadge = '<span class="badge bg-warning text-dark">Not Voted</span>';
+                    actionBtn = `<a href="/ballot/?election=${e.id}" class="btn btn-primary btn-sm"><i class="bi bi-pencil-square"></i> Vote Now</a>`;
+                } else if (e.status === 'published') {
+                    statusBadge = '<span class="badge bg-info">Published</span>';
+                    actionBtn = `<a href="/results/?election=${e.id}" class="btn btn-outline-primary btn-sm"><i class="bi bi-bar-chart-fill"></i> View Results</a>`;
+                } else {
+                    statusBadge = `<span class="badge bg-secondary">${CEMS.escapeHtml(e.status)}</span>`;
+                    actionBtn = '';
+                }
+
+                html += `
+                    <div class="card mb-2 border-0 bg-light">
+                        <div class="card-body py-3 d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${CEMS.escapeHtml(e.name)}</strong>
+                                <br><small class="text-muted">${typeLabel}</small>
+                                ${statusBadge}
+                            </div>
+                            <div>${actionBtn}</div>
+                        </div>
+                    </div>`;
+            }
+            listContainer.innerHTML = html;
+        }
+
+        // Election info panel
+        const infoContainer = document.getElementById('election-info');
+        if (elections.length > 0) {
+            let infoHtml = '<ul class="list-group list-group-flush">';
+            infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Eligible Elections</span><strong>${elections.length}</strong></li>`;
+            infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Active</span><strong>${activeElections.length}</strong></li>`;
+            infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Published</span><strong>${publishedElections.length}</strong></li>`;
+            if (user.college) {
+                infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Your College</span><strong>${CEMS.escapeHtml(user.college)}</strong></li>`;
+            }
+            infoHtml += '</ul>';
+            infoContainer.innerHTML = infoHtml;
+        } else {
+            infoContainer.innerHTML = '<p class="text-muted">No election information available.</p>';
+        }
+
     } catch (err) {
         CEMS.showToast('Error loading dashboard: ' + err.message, 'danger');
     }

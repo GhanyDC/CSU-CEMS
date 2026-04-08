@@ -1,5 +1,6 @@
 """
-Elections views — election info, lifecycle management, and results endpoints.
+Elections views — student eligibility, ballot rendering, lifecycle management,
+results, and monitoring endpoints.
 """
 import json
 import logging
@@ -16,12 +17,13 @@ from apps.accounts.decorators import (
 )
 from apps.accounts.models import AdminRole
 from apps.accounts.utils import get_client_ip
-from apps.elections.models import Election, Position, Candidate
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
 from apps.elections.services import (
     ElectionLifecycleService,
     ElectionNotReadyError,
     InvalidTransitionError,
     ResultService,
+    TurnoutService,
 )
 from apps.voting.models import Ballot
 
@@ -29,8 +31,181 @@ logger = logging.getLogger("cems.application")
 
 
 # ---------------------------------------------------------------------------
-# Public / Student endpoints
+# Student eligibility helpers
 # ---------------------------------------------------------------------------
+
+def _get_eligible_elections(student):
+    """
+    Return elections the student is on the voter roll for, filtered
+    to only Active or Published elections.
+
+    Rules:
+    - Campus election: eligible if student is on that election's voter roll
+    - College election: eligible only if student is on voter roll AND
+      the election's college matches the student's college
+    """
+    eligible_entries = (
+        EligibleVoter.objects
+        .filter(student=student)
+        .select_related("election")
+    )
+
+    elections = []
+    for ev in eligible_entries:
+        e = ev.election
+        # Only show Active (can vote) or Published (can see results) elections
+        if e.status not in (Election.Status.ACTIVE, Election.Status.PUBLISHED):
+            continue
+
+        # College election: enforce college match
+        if e.is_college and e.college != student.college:
+            continue
+
+        elections.append(e)
+
+    return elections
+
+
+def _check_student_eligible(student, election):
+    """
+    Check if a student is eligible for a specific election.
+    Returns (is_eligible, error_message).
+    """
+    if not EligibleVoter.objects.filter(
+        election=election, student=student
+    ).exists():
+        return False, "You are not on the approved voter roll for this election."
+
+    if election.is_college and election.college != student.college:
+        return False, "You are not eligible for this college's election."
+
+    return True, None
+
+
+def _has_voted(student, election):
+    """Check if student has already cast a ballot in this election."""
+    hashed = Ballot.hash_student_id(student.student_id, str(election.pk))
+    return Ballot.objects.filter(
+        election=election, hashed_student_id=hashed
+    ).exists()
+
+
+# ---------------------------------------------------------------------------
+# Student-facing endpoints
+# ---------------------------------------------------------------------------
+
+@require_GET
+@login_required_student
+def my_elections(request):
+    """
+    GET /api/elections/mine/
+
+    Returns elections the logged-in student is eligible for.
+    Shows Active elections (can vote) and Published elections (can see results).
+    Includes voting status for each.
+    """
+    student = request.student
+    elections = _get_eligible_elections(student)
+
+    elections_data = []
+    for e in elections:
+        voted = _has_voted(student, e)
+        elections_data.append({
+            "id": str(e.pk),
+            "name": e.name,
+            "election_type": e.election_type,
+            "college": e.college,
+            "status": e.status,
+            "start_time": e.start_time.isoformat(),
+            "end_time": e.end_time.isoformat(),
+            "has_voted": voted,
+        })
+
+    return JsonResponse({
+        "success": True,
+        "elections": elections_data,
+    })
+
+
+@require_GET
+@login_required_student
+def election_ballot(request, election_id):
+    """
+    GET /api/elections/<election_id>/ballot/
+
+    Returns the ballot structure (positions + active candidates) for voting.
+    Enforces eligibility and election status checks.
+    """
+    student = request.student
+
+    try:
+        election = Election.objects.get(pk=election_id)
+    except (Election.DoesNotExist, ValueError):
+        return JsonResponse(
+            {"success": False, "error": "Election not found."}, status=404
+        )
+
+    # Must be Active to view ballot
+    if election.status != Election.Status.ACTIVE:
+        return JsonResponse(
+            {"success": False, "error": "This election is not currently active."},
+            status=403,
+        )
+
+    # Eligibility check
+    eligible, error = _check_student_eligible(student, election)
+    if not eligible:
+        return JsonResponse(
+            {"success": False, "error": error}, status=403
+        )
+
+    # Check if already voted
+    voted = _has_voted(student, election)
+
+    positions = (
+        Position.objects
+        .filter(election=election)
+        .order_by("order", "title")
+    )
+
+    positions_data = []
+    for pos in positions:
+        candidates = (
+            Candidate.objects
+            .filter(position=pos, is_active=True)
+            .order_by("full_name")
+        )
+        positions_data.append({
+            "id": str(pos.pk),
+            "title": pos.title,
+            "category": pos.category,
+            "category_display": pos.get_category_display(),
+            "max_selections": pos.max_selections,
+            "candidates": [
+                {
+                    "id": str(c.pk),
+                    "full_name": c.full_name,
+                    "party": c.party,
+                    "college": c.college or "",
+                }
+                for c in candidates
+            ],
+        })
+
+    return JsonResponse({
+        "success": True,
+        "election": {
+            "id": str(election.pk),
+            "name": election.name,
+            "election_type": election.election_type,
+            "college": election.college,
+            "start_time": election.start_time.isoformat(),
+            "end_time": election.end_time.isoformat(),
+        },
+        "has_voted": voted,
+        "positions": positions_data,
+    })
+
 
 @require_GET
 @login_required_student
@@ -39,18 +214,20 @@ def current_election(request):
     GET /api/elections/current/
 
     Returns the currently active election with its positions and candidates.
+    Now filters by student eligibility.
     """
-    election = (
-        Election.objects
-        .filter(status=Election.Status.ACTIVE)
-        .first()
-    )
-    if not election:
+    student = request.student
+    elections = _get_eligible_elections(student)
+
+    # Find the first active election the student is eligible for
+    active = [e for e in elections if e.status == Election.Status.ACTIVE]
+    if not active:
         return JsonResponse(
             {"success": False, "error": "No active election at this time."},
             status=404,
         )
 
+    election = active[0]
     positions = (
         Position.objects
         .filter(election=election)
@@ -85,6 +262,7 @@ def current_election(request):
         "election": {
             "id": str(election.pk),
             "name": election.name,
+            "election_type": election.election_type,
             "start_time": election.start_time.isoformat(),
             "end_time": election.end_time.isoformat(),
             "positions": positions_data,
@@ -98,36 +276,47 @@ def voting_status(request):
     """
     GET /api/elections/status/
 
-    Returns whether the authenticated student has already voted in the current election.
+    Returns voting status for all eligible elections.
     """
-    election = (
-        Election.objects
-        .filter(status=Election.Status.ACTIVE)
-        .first()
-    )
-    if not election:
+    student = request.student
+    elections = _get_eligible_elections(student)
+
+    active_elections = [e for e in elections if e.status == Election.Status.ACTIVE]
+
+    if not active_elections:
         return JsonResponse({
             "success": True,
             "has_active_election": False,
             "has_voted": False,
+            "elections": [],
         })
 
-    hashed = Ballot.hash_student_id(request.student.student_id, str(election.pk))
-    has_voted = Ballot.objects.filter(
-        election=election, hashed_student_id=hashed
-    ).exists()
+    elections_status = []
+    for e in active_elections:
+        voted = _has_voted(student, e)
+        elections_status.append({
+            "election_id": str(e.pk),
+            "election_name": e.name,
+            "election_type": e.election_type,
+            "has_voted": voted,
+        })
+
+    # Backward compatibility: return first election info at top level
+    first = active_elections[0]
+    first_voted = _has_voted(student, first)
 
     return JsonResponse({
         "success": True,
         "has_active_election": True,
-        "election_id": str(election.pk),
-        "election_name": election.name,
-        "has_voted": has_voted,
+        "election_id": str(first.pk),
+        "election_name": first.name,
+        "has_voted": first_voted,
+        "elections": elections_status,
     })
 
 
 # ---------------------------------------------------------------------------
-# Results endpoint (published elections only)
+# Results endpoints
 # ---------------------------------------------------------------------------
 
 @require_GET
@@ -138,7 +327,11 @@ def election_results(request, election_id=None):
     GET /api/elections/results/<election_id>/
 
     Returns results for a published election.
+    Students may only view results of elections they are eligible for,
+    and only after the election is Published.
     """
+    student = request.student
+
     if election_id:
         try:
             election = Election.objects.get(pk=election_id)
@@ -147,9 +340,16 @@ def election_results(request, election_id=None):
                 {"success": False, "error": "Election not found."}, status=404
             )
     else:
+        # Find the most recent published election the student is eligible for
+        eligible_election_ids = (
+            EligibleVoter.objects
+            .filter(student=student)
+            .values_list("election_id", flat=True)
+        )
         election = (
             Election.objects
-            .filter(status=Election.Status.PUBLISHED)
+            .filter(pk__in=eligible_election_ids, status=Election.Status.PUBLISHED)
+            .order_by("-updated_at")
             .first()
         )
         if not election:
@@ -158,13 +358,100 @@ def election_results(request, election_id=None):
                 status=404,
             )
 
+    # Students can only see Published results
     if election.status != Election.Status.PUBLISHED:
         return JsonResponse(
             {"success": False, "error": "Results are not yet published."},
             status=403,
         )
 
-    results = ResultService.compute_results(election)
+    # Eligibility check — student must be on the voter roll
+    eligible, error = _check_student_eligible(student, election)
+    if not eligible:
+        return JsonResponse(
+            {"success": False, "error": error}, status=403
+        )
+
+    results = ResultService.compute_results_with_thresholds(election)
+    return JsonResponse({"success": True, **results})
+
+
+# ---------------------------------------------------------------------------
+# Admin monitoring endpoints
+# ---------------------------------------------------------------------------
+
+@require_GET
+@admin_login_required
+@role_required(
+    AdminRole.ELECTORAL_BOARD_HEAD,
+    AdminRole.ELECTORAL_BOARD_OPERATOR,
+    AdminRole.TALLY_WATCHER,
+    AdminRole.AUDITOR,
+)
+def election_turnout(request, election_id):
+    """
+    GET /api/admin/elections/<election_id>/turnout/
+
+    Returns turnout statistics for an election. Available during Active status.
+    Does NOT expose per-candidate tallies.
+    """
+    try:
+        election = Election.objects.get(pk=election_id)
+    except (Election.DoesNotExist, ValueError):
+        return JsonResponse(
+            {"success": False, "error": "Election not found."}, status=404
+        )
+
+    if election.status not in (
+        Election.Status.ACTIVE,
+        Election.Status.CLOSED,
+        Election.Status.PUBLISHED,
+    ):
+        return JsonResponse(
+            {"success": False, "error": "Turnout data is not available for draft elections."},
+            status=403,
+        )
+
+    turnout = TurnoutService.compute_turnout(election)
+    return JsonResponse({"success": True, **turnout})
+
+
+@require_GET
+@admin_login_required
+@role_required(
+    AdminRole.ELECTORAL_BOARD_HEAD,
+    AdminRole.ELECTORAL_BOARD_OPERATOR,
+    AdminRole.TALLY_WATCHER,
+    AdminRole.AUDITOR,
+)
+def election_tally_review(request, election_id):
+    """
+    GET /api/admin/elections/<election_id>/tally/
+
+    Returns full tally (candidate vote counts) for an election.
+    Available only after Close (Closed or Published status).
+    NOT available during Active voting — no live candidate tallies.
+    """
+    try:
+        election = Election.objects.get(pk=election_id)
+    except (Election.DoesNotExist, ValueError):
+        return JsonResponse(
+            {"success": False, "error": "Election not found."}, status=404
+        )
+
+    if election.status == Election.Status.ACTIVE:
+        return JsonResponse(
+            {"success": False, "error": "Candidate tallies are not available during active voting."},
+            status=403,
+        )
+
+    if election.status == Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "No tally data for draft elections."},
+            status=403,
+        )
+
+    results = ResultService.compute_results_with_thresholds(election)
     return JsonResponse({"success": True, **results})
 
 

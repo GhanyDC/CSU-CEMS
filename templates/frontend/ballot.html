@@ -112,38 +112,54 @@ let positionsData = [];
     if (user.is_admin) document.getElementById('nav-admin').classList.remove('d-none');
     document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
 
-    // Check voting status
+    // Get election ID from query string or fall back to /mine/ endpoint
+    const params = new URLSearchParams(window.location.search);
+    let targetElectionId = params.get('election');
+
     try {
-        const status = await CEMS.api('/api/elections/status/');
-        if (!status.has_active_election) {
+        if (!targetElectionId) {
+            // Fall back: find the first active eligible election
+            const mineData = await CEMS.api('/api/elections/mine/');
+            const active = (mineData.elections || []).find(e => e.status === 'active' && !e.has_voted);
+            if (!active) {
+                const voted = (mineData.elections || []).find(e => e.status === 'active' && e.has_voted);
+                if (voted) {
+                    document.getElementById('already-voted-alert').classList.remove('d-none');
+                } else {
+                    document.getElementById('no-election-alert').classList.remove('d-none');
+                }
+                return;
+            }
+            targetElectionId = active.id;
+        }
+
+        // Load ballot structure for the specific election
+        const ballotData = await CEMS.api(`/api/elections/${targetElectionId}/ballot/`);
+        if (!ballotData.success) {
+            CEMS.showToast(ballotData.error || 'Could not load ballot.', 'danger');
             document.getElementById('no-election-alert').classList.remove('d-none');
             return;
         }
 
-        if (status.has_voted) {
+        if (ballotData.has_voted) {
             document.getElementById('already-voted-alert').classList.remove('d-none');
             return;
         }
 
-        electionId = status.election_id;
-
-        // Load election details
-        const elData = await CEMS.api('/api/elections/current/');
-        if (!elData.success) {
-            CEMS.showToast('Could not load election data.', 'danger');
-            return;
-        }
-
-        const el = elData.election;
-        positionsData = el.positions || [];
-        document.getElementById('ballot-election-name').textContent = el.name;
+        electionId = ballotData.election.id;
+        positionsData = ballotData.positions || [];
+        document.getElementById('ballot-election-name').textContent = ballotData.election.name;
         document.getElementById('ballot-form').classList.remove('d-none');
 
         renderPositions(positionsData);
         updateSummary();
 
     } catch (err) {
-        CEMS.showToast('Error: ' + err.message, 'danger');
+        if (err.message && (err.message.includes('403') || err.message.includes('404'))) {
+            document.getElementById('no-election-alert').classList.remove('d-none');
+        } else {
+            CEMS.showToast('Error: ' + err.message, 'danger');
+        }
     }
 })();
 

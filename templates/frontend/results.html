@@ -51,7 +51,7 @@
         <div id="results-container" class="d-none">
             <!-- Stats Summary -->
             <div class="row g-3 mb-4">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card border-0 shadow-sm bg-primary text-white">
                         <div class="card-body text-center">
                             <h3 class="mb-0" id="total-votes-count">0</h3>
@@ -59,7 +59,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card border-0 shadow-sm bg-success text-white">
                         <div class="card-body text-center">
                             <h3 class="mb-0" id="total-positions-count">0</h3>
@@ -67,11 +67,19 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card border-0 shadow-sm bg-info text-white">
                         <div class="card-body text-center">
                             <h3 class="mb-0" id="total-candidates-count">0</h3>
                             <small>Total Candidates</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm bg-warning text-dark">
+                        <div class="card-body text-center">
+                            <h3 class="mb-0" id="turnout-percentage">0%</h3>
+                            <small id="turnout-detail">Voter Turnout</small>
                         </div>
                     </div>
                 </div>
@@ -93,9 +101,24 @@
     if (user.is_admin) document.getElementById('nav-admin').classList.remove('d-none');
     document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
 
-    // Try to load results
+    // Try to load results for a specific election
+    const params = new URLSearchParams(window.location.search);
+    let targetElectionId = params.get('election');
+
     try {
-        const res = await CEMS.api('/api/elections/results/');
+        if (!targetElectionId) {
+            // Fall back: find the first published eligible election
+            const mineData = await CEMS.api('/api/elections/mine/');
+            const published = (mineData.elections || []).find(e => e.status === 'published');
+            if (!published) {
+                document.getElementById('results-not-available').classList.remove('d-none');
+                document.getElementById('results-election-name').textContent = '';
+                return;
+            }
+            targetElectionId = published.id;
+        }
+
+        const res = await CEMS.api(`/api/elections/results/${targetElectionId}/`);
 
         if (!res.success) {
             document.getElementById('results-not-available').classList.remove('d-none');
@@ -108,23 +131,26 @@
 
         const positions = res.positions || [];
         let totalCandidates = 0;
-        let totalBallots = 0;
 
         positions.forEach(pos => {
             const results = pos.results || [];
             totalCandidates += results.length;
-            results.forEach(r => totalBallots = Math.max(totalBallots, r.votes || 0));
         });
 
-        // Calculate total ballots from max votes in any single-seat position
-        const execPos = positions.find(p => p.category === 'executive');
-        if (execPos && execPos.results) {
-            totalBallots = execPos.results.reduce((sum, r) => sum + (r.votes || 0), 0);
-        }
+        // Use turnout data from the enhanced results endpoint
+        const totalBallots = res.total_ballots || 0;
+        const totalEligible = res.total_eligible || 0;
+        const turnoutPct = res.turnout_percentage || '0.0';
 
         document.getElementById('total-votes-count').textContent = totalBallots;
         document.getElementById('total-positions-count').textContent = positions.length;
         document.getElementById('total-candidates-count').textContent = totalCandidates;
+
+        // Update turnout display
+        if (document.getElementById('turnout-percentage')) {
+            document.getElementById('turnout-percentage').textContent = `${turnoutPct}%`;
+            document.getElementById('turnout-detail').textContent = `${totalBallots} of ${totalEligible} eligible`;
+        }
 
         renderResults(positions, totalBallots);
 
@@ -149,6 +175,12 @@ function renderResults(positions, totalBallots) {
 
         const categoryBadge = getCategoryBadge(pos.category);
         const winnerInfo = pos.winner ? `<span class="badge bg-success"><i class="bi bi-trophy-fill"></i> ${CEMS.escapeHtml(pos.winner)}</span>` : '';
+
+        // Build threshold info if available
+        let thresholdHtml = '';
+        if (pos.threshold_50_plus_1 !== undefined) {
+            thresholdHtml = `<small class="text-muted d-block mt-1">50%+1 Threshold: <strong>${pos.threshold_50_plus_1}</strong> votes (of ${pos.threshold_denominator} eligible)</small>`;
+        }
 
         let barsHtml = '';
         results.forEach((cand, ci) => {
@@ -187,6 +219,7 @@ function renderResults(positions, totalBallots) {
                             ${CEMS.escapeHtml(pos.position || pos.title || '')}
                         </h5>
                         <small class="text-muted">${categoryBadge} &mdash; ${posTotal} total votes</small>
+                        ${thresholdHtml}
                     </div>
                     <div>${winnerInfo}</div>
                 </div>
