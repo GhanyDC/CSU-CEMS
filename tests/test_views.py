@@ -12,10 +12,12 @@ from datetime import date, datetime, timezone
 
 import pytest
 from django.test import Client
+from django.utils import timezone as tz
 
-from apps.accounts.models import Student
-from apps.elections.models import Candidate, Election, Position
+from apps.accounts.models import AdminRole, Student
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
 from apps.voting.models import Ballot
+from conftest import admin_client_for, create_admin_user, make_eligible, finalize_election_voter_roll
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -233,6 +235,7 @@ class TestCastBallotView:
         self.election = make_election()
         self.pos = make_position(self.election)
         self.cand = make_candidate(self.pos)
+        make_eligible(self.student, self.election)
         self.client = auth_client(self.student)
 
     def _cast(self, election_id=None, selections=None):
@@ -327,9 +330,24 @@ class TestAdminLifecycleViews:
     """Tests for POST /api/admin/elections/start|close|publish/"""
 
     def setup_method(self):
-        self.admin = make_student(student_id="ADMIN001", is_admin=True)
+        # Electoral Board Head — can start/close/publish
+        self.eb_head_user, self.eb_head_profile = create_admin_user(
+            username="ADMIN001",
+            role=AdminRole.ELECTORAL_BOARD_HEAD,
+            display_name="Test EB Head",
+        )
+        self.admin_client = admin_client_for(self.eb_head_user)
+
+        # Operator — cannot start/close/publish
+        self.operator_user, self.operator_profile = create_admin_user(
+            username="OPERATOR001",
+            role=AdminRole.ELECTORAL_BOARD_OPERATOR,
+            display_name="Test Operator",
+        )
+        self.operator_client = admin_client_for(self.operator_user)
+
+        # Regular student — has no admin auth at all
         self.non_admin = make_student(student_id="STU001")
-        self.admin_client = auth_client(self.admin)
         self.student_client = auth_client(self.non_admin)
 
     def _post(self, client, url, election_id):
@@ -350,39 +368,49 @@ class TestAdminLifecycleViews:
         )
         assert response.status_code == 401
 
-    def test_non_admin_start_returns_403(self):
+    def test_student_start_returns_401(self):
+        """Student auth (session-based) must not grant admin access."""
         election = make_election(status=Election.Status.DRAFT)
         response = self._post(self.student_client, "/api/admin/elections/start/", election.pk)
-        assert response.status_code == 403
-        assert "Admin privileges" in response.json()["error"]
+        assert response.status_code == 401
 
-    def test_non_admin_close_returns_403(self):
-        election = make_election(status=Election.Status.ACTIVE)
-        response = self._post(self.student_client, "/api/admin/elections/close/", election.pk)
-        assert response.status_code == 403
-
-    def test_non_admin_publish_returns_403(self):
-        election = make_election(status=Election.Status.CLOSED)
-        response = self._post(self.student_client, "/api/admin/elections/publish/", election.pk)
-        assert response.status_code == 403
-
-    # ── Successful transitions ──
-
-    def test_admin_starts_election(self):
+    def test_operator_start_returns_403(self):
+        """Operator role cannot start elections — only EB Head can."""
         election = make_election(status=Election.Status.DRAFT)
+        response = self._post(self.operator_client, "/api/admin/elections/start/", election.pk)
+        assert response.status_code == 403
+
+    def test_operator_close_returns_403(self):
+        election = make_election(status=Election.Status.ACTIVE)
+        response = self._post(self.operator_client, "/api/admin/elections/close/", election.pk)
+        assert response.status_code == 403
+
+    def test_operator_publish_returns_403(self):
+        election = make_election(status=Election.Status.CLOSED)
+        response = self._post(self.operator_client, "/api/admin/elections/publish/", election.pk)
+        assert response.status_code == 403
+
+    # ── Successful transitions (EB Head only) ──
+
+    def test_eb_head_starts_election(self):
+        election = make_election(status=Election.Status.DRAFT)
+        # Voter roll must be finalized before starting
+        s = make_student(student_id="VROLL001")
+        make_eligible(s, election)
+        finalize_election_voter_roll(election)
         response = self._post(self.admin_client, "/api/admin/elections/start/", election.pk)
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["status"] == Election.Status.ACTIVE
 
-    def test_admin_closes_election(self):
+    def test_eb_head_closes_election(self):
         election = make_election(status=Election.Status.ACTIVE)
         response = self._post(self.admin_client, "/api/admin/elections/close/", election.pk)
         assert response.status_code == 200
         assert response.json()["status"] == Election.Status.CLOSED
 
-    def test_admin_publishes_results(self):
+    def test_eb_head_publishes_results(self):
         election = make_election(status=Election.Status.CLOSED)
         response = self._post(self.admin_client, "/api/admin/elections/publish/", election.pk)
         assert response.status_code == 200
@@ -491,13 +519,21 @@ class TestCandidateValidation:
 
 
 @pytest.mark.django_db
-class TestAdminRequiredDecorator:
-    """Tests for the @admin_required decorator."""
+class TestAdminAuthDecoratorSeparation:
+    """Tests that admin auth is separate from student auth on lifecycle endpoints."""
 
-    def test_admin_can_access(self):
-        admin = make_student(student_id="ADM_DEC", is_admin=True)
+    def test_eb_head_can_access_lifecycle(self):
+        """EB Head (via Django auth) can start elections."""
+        user, _ = create_admin_user(
+            username="ADM_DEC",
+            role=AdminRole.ELECTORAL_BOARD_HEAD,
+            display_name="Dec Test Head",
+        )
         election = make_election(status=Election.Status.DRAFT)
-        client = auth_client(admin)
+        s = make_student(student_id="VROLL002")
+        make_eligible(s, election)
+        finalize_election_voter_roll(election)
+        client = admin_client_for(user)
         response = client.post(
             "/api/admin/elections/start/",
             data=json.dumps({"election_id": str(election.pk)}),
@@ -505,7 +541,8 @@ class TestAdminRequiredDecorator:
         )
         assert response.status_code == 200
 
-    def test_non_admin_blocked(self):
+    def test_student_auth_blocked_from_admin_endpoints(self):
+        """Student session (even with is_admin=True) cannot access new admin endpoints."""
         student = make_student(student_id="NON_ADM")
         election = make_election(status=Election.Status.DRAFT)
         client = auth_client(student)
@@ -514,7 +551,7 @@ class TestAdminRequiredDecorator:
             data=json.dumps({"election_id": str(election.pk)}),
             content_type="application/json",
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_is_admin_defaults_false(self):
         s = Student.objects.create(

@@ -17,6 +17,7 @@ from apps.voting.services import (
     BallotService,
     ElectionNotActiveError,
     InvalidSelectionError,
+    VoterNotEligibleError,
 )
 
 logger = logging.getLogger("cems.application")
@@ -104,6 +105,8 @@ def cast_ballot(request):
         )
     except ElectionNotActiveError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=409)
+    except VoterNotEligibleError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=403)
     except BallotAlreadyCastError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=409)
     except InvalidSelectionError as e:

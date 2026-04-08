@@ -161,8 +161,8 @@ class TestGeneratePilotDataCommand:
         call_command("generate_pilot_data", students=5)
         election = Election.objects.first()
         assert election is not None
-        # Should have: 2 executive + 1 senate + 8 college reps + 1 party-list = 12
-        assert Position.objects.filter(election=election).count() == 12
+        # Should have: 2 executive + 1 senate + 9 college reps + 1 party-list = 13
+        assert Position.objects.filter(election=election).count() == 13
         assert Candidate.objects.filter(position__election=election).count() > 0
 
     def test_custom_student_count(self):

@@ -1,19 +1,23 @@
 """
-Elections models — Election, Position, and Candidate entities.
+Elections models — Election, Position, Candidate, EligibleVoter, and VerificationRecord.
 
 Models are structured to match the campus constitutional structure:
   Executive Branch : President, Vice President
   Senate           : up to 12 Senators
   House            : College Representatives + Party-List Representatives
+
+College elections mirror the campus pattern within a single college.
 """
 import uuid
 
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from apps.elections.constants import OFFICIAL_COLLEGES
+
 
 class Election(models.Model):
-    """Represents a discrete campus election event (e.g. Academic Year 2026 General Elections)."""
+    """Represents a discrete election event — campus-wide or per-college."""
 
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -21,8 +25,24 @@ class Election(models.Model):
         CLOSED = "closed", "Closed"
         PUBLISHED = "published", "Published"
 
+    class ElectionType(models.TextChoices):
+        CAMPUS = "campus", "Campus"
+        COLLEGE = "college", "College"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
+    election_type = models.CharField(
+        max_length=10,
+        choices=ElectionType.choices,
+        default=ElectionType.CAMPUS,
+        db_index=True,
+    )
+    college = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Required for college elections. Must be an official college name.",
+    )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     status = models.CharField(
@@ -31,6 +51,8 @@ class Election(models.Model):
         default=Status.DRAFT,
         db_index=True,
     )
+    voter_roll_finalized_at = models.DateTimeField(null=True, blank=True)
+    voter_roll_finalized_by = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -43,7 +65,26 @@ class Election(models.Model):
                 condition=models.Q(end_time__gt=models.F("start_time")),
                 name="election_end_time_after_start_time",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(election_type="campus", college="")
+                    | models.Q(election_type="college") & ~models.Q(college="")
+                ),
+                name="college_required_for_college_elections",
+            ),
         ]
+
+    @property
+    def is_campus(self) -> bool:
+        return self.election_type == self.ElectionType.CAMPUS
+
+    @property
+    def is_college(self) -> bool:
+        return self.election_type == self.ElectionType.COLLEGE
+
+    @property
+    def is_voter_roll_finalized(self) -> bool:
+        return self.voter_roll_finalized_at is not None
 
     def __str__(self) -> str:
         return f"{self.name} ({self.get_status_display()})"
@@ -54,6 +95,20 @@ class Election(models.Model):
             raise ValidationError(
                 {"end_time": "End time must be after start time."}
             )
+        if self.election_type == self.ElectionType.COLLEGE:
+            if not self.college:
+                raise ValidationError(
+                    {"college": "College is required for college elections."}
+                )
+            if self.college not in OFFICIAL_COLLEGES:
+                raise ValidationError(
+                    {"college": f"'{self.college}' is not a recognized official college."}
+                )
+        elif self.election_type == self.ElectionType.CAMPUS:
+            if self.college:
+                raise ValidationError(
+                    {"college": "Campus elections must not specify a college."}
+                )
 
 
 class Position(models.Model):
@@ -64,6 +119,8 @@ class Position(models.Model):
         SENATE = "senate", "Senate"
         HOUSE_COLLEGE = "house_college", "House – College Representative"
         HOUSE_PARTY = "house_party", "House – Party-List Representative"
+        COLLEGE_EXECUTIVE = "college_executive", "College Executive"
+        COLLEGE_BOARD = "college_board", "College Board Member"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     election = models.ForeignKey(
@@ -147,3 +204,92 @@ class Candidate(models.Model):
             raise ValidationError(
                 {"college": "College is required for House College Representatives."}
             )
+
+
+class EligibleVoter(models.Model):
+    """
+    Per-election frozen voter roll entry.
+
+    Created when registered students are matched against verification records.
+    The college_snapshot preserves the student's college at the time of approval.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    election = models.ForeignKey(
+        Election,
+        on_delete=models.CASCADE,
+        related_name="voter_roll",
+    )
+    student = models.ForeignKey(
+        "accounts.Student",
+        on_delete=models.PROTECT,
+        related_name="election_eligibility",
+    )
+    college_snapshot = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Eligible Voter"
+        verbose_name_plural = "Eligible Voters"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["election", "student"],
+                name="unique_voter_per_election",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student} – {self.election.name}"
+
+
+class VerificationRecord(models.Model):
+    """
+    Per-election verification form staging record.
+
+    Imported from a verification form CSV and matched against the Student (registrar) table.
+    """
+
+    class MatchStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        MATCHED = "matched", "Matched"
+        UNMATCHED = "unmatched", "Unmatched"
+        DUPLICATE = "duplicate", "Duplicate"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    election = models.ForeignKey(
+        Election,
+        on_delete=models.CASCADE,
+        related_name="verification_records",
+    )
+    student_id_input = models.CharField(max_length=50, db_index=True)
+    full_name_input = models.CharField(max_length=255, blank=True, default="")
+    college_input = models.CharField(max_length=255, blank=True, default="")
+    matched_student = models.ForeignKey(
+        "accounts.Student",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="verification_records",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=MatchStatus.choices,
+        default=MatchStatus.PENDING,
+        db_index=True,
+    )
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["imported_at"]
+        verbose_name = "Verification Record"
+        verbose_name_plural = "Verification Records"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["election", "student_id_input"],
+                name="unique_verification_per_election",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student_id_input} – {self.election.name} ({self.get_status_display()})"

@@ -14,9 +14,10 @@ from datetime import date, datetime, timezone
 
 from apps.accounts.models import Student
 from apps.audit.models import AuditLog
-from apps.elections.models import Candidate, Election, Position
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
 from apps.elections.services import (
     ElectionLifecycleService,
+    ElectionNotReadyError,
     InvalidTransitionError,
     ResultService,
 )
@@ -57,8 +58,25 @@ def make_student(student_id="LIFE001"):
     )
 
 
+def make_eligible(student, election):
+    return EligibleVoter.objects.create(
+        election=election, student=student, college_snapshot=student.college or "",
+    )
+
+
+def finalize_voter_roll(election):
+    """Finalize voter roll for testing (requires at least one eligible voter)."""
+    from django.utils import timezone as tz
+    election.voter_roll_finalized_at = tz.now()
+    election.voter_roll_finalized_by = "test"
+    election.save(update_fields=["voter_roll_finalized_at", "voter_roll_finalized_by", "updated_at"])
+    return election
+
+
 def cast_vote(student, election, selections):
-    """Cast a ballot using string-ID tuples."""
+    """Cast a ballot using string-ID tuples. Ensures voter is eligible."""
+    if not EligibleVoter.objects.filter(election=election, student=student).exists():
+        make_eligible(student, election)
     sel_tuples = [(str(pos.pk), str(cand.pk)) for pos, cand in selections]
     return BallotService.cast_ballot(student, election, sel_tuples)
 
@@ -70,8 +88,11 @@ class TestElectionLifecycle:
     """Test the election state machine."""
 
     def test_draft_to_active(self) -> None:
-        """DRAFT → ACTIVE succeeds."""
+        """DRAFT → ACTIVE succeeds when voter roll is finalized."""
         election = make_election(status=Election.Status.DRAFT)
+        s = make_student(student_id="SETUP001")
+        make_eligible(s, election)
+        finalize_voter_roll(election)
         result = ElectionLifecycleService.start_election(election)
         assert result.status == Election.Status.ACTIVE
 
@@ -90,6 +111,9 @@ class TestElectionLifecycle:
     def test_full_lifecycle(self) -> None:
         """DRAFT → ACTIVE → CLOSED → PUBLISHED full cycle."""
         election = make_election()
+        s = make_student(student_id="SETUP002")
+        make_eligible(s, election)
+        finalize_voter_roll(election)
         election = ElectionLifecycleService.start_election(election)
         assert election.status == Election.Status.ACTIVE
         election = ElectionLifecycleService.close_election(election)
@@ -100,6 +124,9 @@ class TestElectionLifecycle:
     def test_cannot_skip_active(self) -> None:
         """DRAFT → CLOSED is invalid."""
         election = make_election(status=Election.Status.DRAFT)
+        s = make_student(student_id="SETUP003")
+        make_eligible(s, election)
+        finalize_voter_roll(election)
         with pytest.raises(InvalidTransitionError):
             ElectionLifecycleService.close_election(election)
 
@@ -124,6 +151,9 @@ class TestElectionLifecycle:
     def test_transition_persists_to_db(self) -> None:
         """Status change is persisted to the database."""
         election = make_election(status=Election.Status.DRAFT)
+        s = make_student(student_id="SETUP004")
+        make_eligible(s, election)
+        finalize_voter_roll(election)
         ElectionLifecycleService.start_election(election)
         election.refresh_from_db()
         assert election.status == Election.Status.ACTIVE
@@ -131,6 +161,9 @@ class TestElectionLifecycle:
     def test_transition_creates_audit_log(self) -> None:
         """Each transition creates an audit log entry."""
         election = make_election(status=Election.Status.DRAFT)
+        s = make_student(student_id="SETUP005")
+        make_eligible(s, election)
+        finalize_voter_roll(election)
         ElectionLifecycleService.start_election(
             election, performed_by="ADMIN001", ip_address="10.0.0.1"
         )
@@ -156,6 +189,21 @@ class TestElectionLifecycle:
         assert AuditLog.objects.filter(
             event_type=AuditLog.EventType.RESULTS_PUBLISHED
         ).exists()
+
+    def test_start_without_voter_roll_rejected(self) -> None:
+        """Cannot start election if voter roll is not finalized."""
+        election = make_election(status=Election.Status.DRAFT)
+        with pytest.raises(ElectionNotReadyError, match="voter roll"):
+            ElectionLifecycleService.start_election(election)
+
+    def test_start_with_voter_roll_not_finalized_rejected(self) -> None:
+        """Cannot start election if voter roll has eligible voters but is not finalized."""
+        election = make_election(status=Election.Status.DRAFT)
+        s = make_student(student_id="UNFIN001")
+        make_eligible(s, election)
+        # Not finalized
+        with pytest.raises(ElectionNotReadyError, match="voter roll"):
+            ElectionLifecycleService.start_election(election)
 
 
 # ── Result computation ────────────────────────────────────────────────────────

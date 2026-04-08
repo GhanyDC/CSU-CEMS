@@ -9,11 +9,17 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.accounts.decorators import admin_required, login_required_student
+from apps.accounts.decorators import (
+    admin_login_required,
+    login_required_student,
+    role_required,
+)
+from apps.accounts.models import AdminRole
 from apps.accounts.utils import get_client_ip
 from apps.elections.models import Election, Position, Candidate
 from apps.elections.services import (
     ElectionLifecycleService,
+    ElectionNotReadyError,
     InvalidTransitionError,
     ResultService,
 )
@@ -163,47 +169,50 @@ def election_results(request, election_id=None):
 
 
 # ---------------------------------------------------------------------------
-# Admin lifecycle endpoints
+# Admin lifecycle endpoints (Electoral Board Head only)
 # ---------------------------------------------------------------------------
 
 @require_POST
 @csrf_protect
-@login_required_student
-@admin_required
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
 def start_election(request):
     """
     POST /api/admin/elections/start/
     Body: {"election_id": "..."}
 
     Transitions an election from DRAFT to ACTIVE.
+    Only the Electoral Board Head may perform this action.
     """
     return _lifecycle_action(request, ElectionLifecycleService.start_election)
 
 
 @require_POST
 @csrf_protect
-@login_required_student
-@admin_required
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
 def close_election(request):
     """
     POST /api/admin/elections/close/
     Body: {"election_id": "..."}
 
     Transitions an election from ACTIVE to CLOSED.
+    Only the Electoral Board Head may perform this action.
     """
     return _lifecycle_action(request, ElectionLifecycleService.close_election)
 
 
 @require_POST
 @csrf_protect
-@login_required_student
-@admin_required
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
 def publish_results(request):
     """
     POST /api/admin/elections/publish/
     Body: {"election_id": "..."}
 
     Transitions an election from CLOSED to PUBLISHED.
+    Only the Electoral Board Head may perform this action.
     """
     return _lifecycle_action(request, ElectionLifecycleService.publish_results)
 
@@ -240,11 +249,15 @@ def _lifecycle_action(request, action_method):
     try:
         election = action_method(
             election,
-            performed_by=request.student.student_id,
+            performed_by=request.admin_profile.user.username,
             ip_address=get_client_ip(request),
             user_agent=request.META.get("HTTP_USER_AGENT", ""),
         )
     except InvalidTransitionError as e:
+        return JsonResponse(
+            {"success": False, "error": str(e)}, status=409
+        )
+    except ElectionNotReadyError as e:
         return JsonResponse(
             {"success": False, "error": str(e)}, status=409
         )

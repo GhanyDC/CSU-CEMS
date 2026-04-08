@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.models import Student
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
-from apps.elections.models import Candidate, Election, Position
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
 from apps.voting.models import Ballot, BallotSelection
 
 logger = logging.getLogger("cems.application")
@@ -26,6 +26,10 @@ class ElectionNotActiveError(Exception):
 
 class InvalidSelectionError(Exception):
     """Raised when ballot selections fail validation."""
+
+
+class VoterNotEligibleError(Exception):
+    """Raised when a student is not on the approved voter roll for the election."""
 
 
 class BallotService:
@@ -67,6 +71,14 @@ class BallotService:
         if now < election.start_time or now > election.end_time:
             raise ElectionNotActiveError(
                 "This election is not within its voting window."
+            )
+
+        # 1b. Validate student is on the approved voter roll
+        if not EligibleVoter.objects.filter(
+            election=election, student=student
+        ).exists():
+            raise VoterNotEligibleError(
+                "You are not on the approved voter roll for this election."
             )
 
         # 2. Validate selections list is non-empty

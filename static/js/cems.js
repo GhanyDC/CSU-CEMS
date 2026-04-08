@@ -1,8 +1,16 @@
 /**
- * CEMS — Campus Election Management System
+ * CEMS - Campus Election Management System
  * Core JavaScript utilities for API calls, auth, and UI helpers.
  */
 const CEMS = {
+    /**
+     * Persist user info for frontend navigation state.
+     */
+    setUser(user) {
+        if (!user) return;
+        sessionStorage.setItem('cems_user', JSON.stringify(user));
+    },
+
     /**
      * Make an API call with automatic CSRF token and JSON handling.
      * Throws on network errors or non-OK responses that aren't JSON.
@@ -56,18 +64,39 @@ const CEMS = {
     },
 
     /**
-     * Get stored user info from sessionStorage.
+     * Get authenticated user info from sessionStorage or server bootstrap.
      */
     getUser() {
         try {
-            return JSON.parse(sessionStorage.getItem('cems_user'));
+            const stored = JSON.parse(sessionStorage.getItem('cems_user'));
+            if (stored) {
+                return stored;
+            }
+        } catch (e) {
+            // Fall through to server-bootstrapped user.
+        }
+
+        const bootstrapEl = document.getElementById('cems-bootstrap-user');
+        if (!bootstrapEl) return null;
+
+        try {
+            const user = JSON.parse(bootstrapEl.textContent);
+            CEMS.setUser(user);
+            return user;
         } catch (e) {
             return null;
         }
     },
 
     /**
-     * Logout — clear session and redirect.
+     * Remove cached user info from sessionStorage.
+     */
+    clearUser() {
+        sessionStorage.removeItem('cems_user');
+    },
+
+    /**
+     * Logout - clear session and redirect.
      */
     async logout() {
         try {
@@ -75,7 +104,7 @@ const CEMS = {
         } catch (e) {
             // Ignore errors during logout
         }
-        sessionStorage.removeItem('cems_user');
+        CEMS.clearUser();
         window.location.href = '/';
     },
 

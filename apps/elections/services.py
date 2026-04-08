@@ -1,15 +1,22 @@
 """
-Election services — lifecycle management and result computation.
+Election services — lifecycle management, result computation, and voter roll management.
 """
 import logging
 from collections import defaultdict
 
 from django.db import models, transaction
 from django.db.models import Count
+from django.utils import timezone
 
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
-from apps.elections.models import Candidate, Election, Position
+from apps.elections.models import (
+    Candidate,
+    Election,
+    EligibleVoter,
+    Position,
+    VerificationRecord,
+)
 from apps.voting.models import BallotSelection
 
 logger = logging.getLogger("cems.application")
@@ -116,6 +123,12 @@ class ElectionLifecycleService:
 
     @classmethod
     def start_election(cls, election: Election, **kwargs) -> Election:
+        # Voter roll must be finalized before starting (only check for valid transition)
+        fresh = Election.objects.get(pk=election.pk)
+        if fresh.status == Election.Status.DRAFT and not fresh.is_voter_roll_finalized:
+            raise ElectionNotReadyError(
+                "Cannot start election: voter roll has not been finalized."
+            )
         return cls.transition(election, Election.Status.ACTIVE, **kwargs)
 
     @classmethod
@@ -261,10 +274,16 @@ class ResultService:
 
         category = position.category
 
-        if category == Position.Category.EXECUTIVE:
+        if category in (
+            Position.Category.EXECUTIVE,
+            Position.Category.COLLEGE_EXECUTIVE,
+        ):
             return ResultService._executive_rule(results, total_votes)
 
-        if category == Position.Category.SENATE:
+        if category in (
+            Position.Category.SENATE,
+            Position.Category.COLLEGE_BOARD,
+        ):
             return ResultService._multi_seat_rule(results, position.max_selections)
 
         # HOUSE_COLLEGE and HOUSE_PARTY: single-seat plurality
@@ -302,3 +321,236 @@ class ResultService:
         if results and results[0]["votes"] > 0:
             return results[0]["candidate"], "won"
         return None, "no_votes"
+
+
+# ---------------------------------------------------------------------------
+# Voter Roll Management
+# ---------------------------------------------------------------------------
+
+class VoterRollError(Exception):
+    """Raised for voter-roll pipeline errors."""
+
+
+class VoterRollService:
+    """
+    Manages the per-election voter roll lifecycle:
+      1. Import verification form CSV rows
+      2. Match against the registrar (Student table)
+      3. Generate EligibleVoter records from matched entries
+      4. Finalize the voter roll (locks it)
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def import_verification(
+        election: Election,
+        rows: list[dict],
+    ) -> dict:
+        """
+        Import verification form rows for an election.
+
+        Args:
+            election: The election to import verification records for.
+            rows: List of dicts with keys: student_id, full_name (optional), college (optional).
+
+        Returns:
+            Summary dict: {created, skipped_duplicate, matched, unmatched}.
+        """
+        from apps.accounts.models import Student
+
+        if election.is_voter_roll_finalized:
+            raise VoterRollError("Cannot import: voter roll is already finalized.")
+
+        # Pre-load existing student IDs from the registrar for fast lookup
+        student_map = {
+            s.student_id: s
+            for s in Student.objects.all().only("pk", "student_id")
+        }
+
+        # Pre-load already-imported student_id_input values for this election
+        existing_ids = set(
+            VerificationRecord.objects
+            .filter(election=election)
+            .values_list("student_id_input", flat=True)
+        )
+
+        created = 0
+        skipped_duplicate = 0
+        matched = 0
+        unmatched = 0
+
+        records_to_create = []
+        for row in rows:
+            sid = row.get("student_id", "").strip()
+            if not sid:
+                continue
+
+            if sid in existing_ids:
+                skipped_duplicate += 1
+                continue
+
+            existing_ids.add(sid)
+            student = student_map.get(sid)
+
+            if student:
+                status = VerificationRecord.MatchStatus.MATCHED
+                matched += 1
+            else:
+                status = VerificationRecord.MatchStatus.UNMATCHED
+                unmatched += 1
+
+            records_to_create.append(VerificationRecord(
+                election=election,
+                student_id_input=sid,
+                full_name_input=row.get("full_name", "").strip(),
+                college_input=row.get("college", "").strip(),
+                matched_student=student,
+                status=status,
+            ))
+            created += 1
+
+        if records_to_create:
+            VerificationRecord.objects.bulk_create(records_to_create)
+
+        logger.info(
+            "Verification import: election=%s, created=%d, skipped=%d, matched=%d, unmatched=%d",
+            election.pk, created, skipped_duplicate, matched, unmatched,
+        )
+
+        return {
+            "created": created,
+            "skipped_duplicate": skipped_duplicate,
+            "matched": matched,
+            "unmatched": unmatched,
+        }
+
+    @staticmethod
+    def get_match_summary(election: Election) -> dict:
+        """Return counts of verification records by status."""
+        counts = (
+            VerificationRecord.objects
+            .filter(election=election)
+            .values("status")
+            .annotate(count=Count("id"))
+        )
+        summary = {
+            "total": 0,
+            "matched": 0,
+            "unmatched": 0,
+            "duplicate": 0,
+            "pending": 0,
+        }
+        for row in counts:
+            summary[row["status"]] = row["count"]
+            summary["total"] += row["count"]
+        return summary
+
+    @staticmethod
+    def get_unmatched_records(election: Election):
+        """Return queryset of unmatched verification records."""
+        return VerificationRecord.objects.filter(
+            election=election,
+            status=VerificationRecord.MatchStatus.UNMATCHED,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def generate_voter_roll(election: Election) -> int:
+        """
+        Create EligibleVoter records from MATCHED verification records.
+
+        For college elections, only students whose college matches the
+        election's college are included.
+
+        Returns the number of EligibleVoter records created.
+        """
+        if election.is_voter_roll_finalized:
+            raise VoterRollError("Cannot generate: voter roll is already finalized.")
+
+        matched_records = VerificationRecord.objects.filter(
+            election=election,
+            status=VerificationRecord.MatchStatus.MATCHED,
+            matched_student__isnull=False,
+        ).select_related("matched_student")
+
+        # Filter already-enrolled voters
+        existing_student_ids = set(
+            EligibleVoter.objects
+            .filter(election=election)
+            .values_list("student_id", flat=True)
+        )
+
+        voters_to_create = []
+        for record in matched_records:
+            student = record.matched_student
+            if student.pk in existing_student_ids:
+                continue
+
+            # For college elections, only include students from the matching college
+            if election.is_college and student.college != election.college:
+                continue
+
+            voters_to_create.append(EligibleVoter(
+                election=election,
+                student=student,
+                college_snapshot=student.college or "",
+            ))
+            existing_student_ids.add(student.pk)
+
+        if voters_to_create:
+            EligibleVoter.objects.bulk_create(voters_to_create)
+
+        logger.info(
+            "Voter roll generated: election=%s, created=%d",
+            election.pk, len(voters_to_create),
+        )
+        return len(voters_to_create)
+
+    @staticmethod
+    @transaction.atomic
+    def finalize_voter_roll(
+        election: Election,
+        finalized_by: str,
+    ) -> None:
+        """
+        Lock the voter roll for an election.
+
+        After finalization, no more EligibleVoter records can be added or removed.
+        """
+        election = Election.objects.select_for_update().get(pk=election.pk)
+
+        if election.is_voter_roll_finalized:
+            raise VoterRollError("Voter roll is already finalized.")
+
+        if not EligibleVoter.objects.filter(election=election).exists():
+            raise VoterRollError("Cannot finalize an empty voter roll.")
+
+        election.voter_roll_finalized_at = timezone.now()
+        election.voter_roll_finalized_by = finalized_by
+        election.save(update_fields=[
+            "voter_roll_finalized_at",
+            "voter_roll_finalized_by",
+            "updated_at",
+        ])
+
+        logger.info(
+            "Voter roll finalized: election=%s, by=%s, count=%d",
+            election.pk, finalized_by,
+            EligibleVoter.objects.filter(election=election).count(),
+        )
+
+    @staticmethod
+    def get_approved_count(election: Election) -> int:
+        """Return the total number of eligible voters for an election."""
+        return EligibleVoter.objects.filter(election=election).count()
+
+    @staticmethod
+    def get_approved_count_by_college(election: Election) -> dict[str, int]:
+        """Return eligible voter counts grouped by college_snapshot."""
+        counts = (
+            EligibleVoter.objects
+            .filter(election=election)
+            .values("college_snapshot")
+            .annotate(count=Count("id"))
+        )
+        return {row["college_snapshot"]: row["count"] for row in counts}

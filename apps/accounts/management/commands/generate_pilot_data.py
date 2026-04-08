@@ -20,17 +20,9 @@ from django.utils import timezone
 
 from apps.accounts.models import Student
 from apps.elections.models import Candidate, Election, Position
+from apps.elections.constants import OFFICIAL_COLLEGES
 
-COLLEGES = [
-    "College of Engineering",
-    "College of Arts and Sciences",
-    "College of Business Administration",
-    "College of Education",
-    "College of Nursing",
-    "College of Information Technology",
-    "College of Law",
-    "College of Agriculture",
-]
+COLLEGES = list(OFFICIAL_COLLEGES)
 
 PARTIES = [
     "Alyansa",
@@ -40,14 +32,15 @@ PARTIES = [
 ]
 
 COURSES_BY_COLLEGE = {
-    "College of Engineering": ["BSEE", "BSCE", "BSME", "BSCpE"],
-    "College of Arts and Sciences": ["BSPsych", "ABPolSci", "BSBio", "ABComm"],
-    "College of Business Administration": ["BSA", "BSBA-MM", "BSBA-FM", "BSBA-HRDM"],
-    "College of Education": ["BSED", "BEED", "BPEd"],
+    "College of Humanities and Social Sciences": ["BSPsych", "ABPolSci", "ABComm", "ABPhilo"],
+    "College of Natural Sciences and Mathematics": ["BSBio", "BSChem", "BSMath", "BSPhysics"],
+    "College of Public Administration": ["BPA", "BSPA-HRM", "BSPA-FM"],
+    "College of Information and Computing Sciences": ["BSIT", "BSCS", "BSIS"],
+    "College of Architecture and Engineering": ["BSArch", "BSCE", "BSEE", "BSME"],
+    "College of Industrial Technology": ["BSIT-Auto", "BSIT-Elec", "BSIT-Civil"],
+    "College of Human Kinetics": ["BPEd", "BSESS"],
+    "College of Veterinary Medicine": ["DVM"],
     "College of Nursing": ["BSN"],
-    "College of Information Technology": ["BSIT", "BSCS"],
-    "College of Law": ["JD"],
-    "College of Agriculture": ["BSAgri", "BSForestry"],
 }
 
 # Typical Filipino first & last names for realistic test data

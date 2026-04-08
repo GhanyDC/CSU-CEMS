@@ -22,6 +22,9 @@ class AuditLog(models.Model):
         ELECTION_STARTED = "election_started", "Election Started"
         ELECTION_CLOSED = "election_closed", "Election Closed"
         RESULTS_PUBLISHED = "results_published", "Results Published"
+        ADMIN_LOGIN_ATTEMPT = "admin_login_attempt", "Admin Login Attempt"
+        ADMIN_LOGOUT = "admin_logout", "Admin Logout"
+        ADMIN_PERMISSION_DENIED = "admin_permission_denied", "Admin Permission Denied"
 
     id: models.UUIDField = models.UUIDField(
         primary_key=True,

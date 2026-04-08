@@ -48,6 +48,15 @@ class AuditService:
                 login_logger.info("Login success", extra=log_data)
             else:
                 login_logger.warning("Login failed", extra=log_data)
+        elif event_type == AuditLog.EventType.ADMIN_LOGIN_ATTEMPT:
+            if success:
+                login_logger.info("Admin login success", extra=log_data)
+            else:
+                login_logger.warning("Admin login failed", extra=log_data)
+        elif event_type == AuditLog.EventType.ADMIN_LOGOUT:
+            login_logger.info("Admin logout", extra=log_data)
+        elif event_type == AuditLog.EventType.ADMIN_PERMISSION_DENIED:
+            security_logger.warning("Admin permission denied", extra=log_data)
         elif event_type == AuditLog.EventType.SUSPICIOUS_ACTIVITY:
             security_logger.warning("Suspicious activity", extra=log_data)
         else:

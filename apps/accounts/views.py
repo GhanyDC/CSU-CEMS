@@ -1,17 +1,23 @@
 """
-Accounts views — authentication endpoints.
+Accounts views — authentication endpoints for students and admins.
+
+Two completely separate authentication flows:
+  - Student: student_id + date_of_birth → custom session
+  - Admin:   username + password → Django auth session
 
 Security measures:
 - Rate limiting by IP (django-ratelimit)
-- Account lock after N failed attempts
-- Generic error messages (never reveal whether student exists)
+- Account lock after N failed attempts (student)
+- Generic error messages (never reveal whether accounts exist)
 - Full audit logging of every attempt
 """
+import json
 import logging
 from datetime import date
 from typing import Any, Dict, Optional
 
 from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -19,7 +25,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
-from apps.accounts.models import Student
+from apps.accounts.models import AdminProfile, Student
 from apps.accounts.utils import get_client_ip, get_user_agent
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
@@ -170,5 +176,135 @@ def student_logout(request: Any) -> JsonResponse:
     request.session.flush()
     return JsonResponse(
         {"success": True, "message": "Logged out successfully."},
+        status=200,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin authentication (Bundle 01)
+# ---------------------------------------------------------------------------
+
+GENERIC_ADMIN_AUTH_ERROR: str = "Invalid admin credentials."
+
+
+@require_POST
+@csrf_protect
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
+def admin_login(request: Any) -> JsonResponse:
+    """
+    Authenticate an admin user by username + password.
+
+    POST /api/admin/auth/login/
+    Body (JSON): {"username": "...", "password": "..."}
+
+    Returns:
+        200: {"success": true, "username": "...", "role": "...", "display_name": "..."}
+        400: missing fields
+        401: invalid credentials / inactive profile
+        429: rate limited
+    """
+    ip_address: str = get_client_ip(request)
+    user_agent: str = get_user_agent(request)
+
+    try:
+        if request.content_type == "application/json":
+            body: Dict[str, Any] = json.loads(request.body)
+        else:
+            body = request.POST.dict()
+    except (json.JSONDecodeError, Exception):
+        return JsonResponse(
+            {"success": False, "error": "Invalid request body."}, status=400
+        )
+
+    username: Optional[str] = body.get("username")
+    password: Optional[str] = body.get("password")
+
+    if not username or not password:
+        return JsonResponse(
+            {"success": False, "error": "username and password are required."},
+            status=400,
+        )
+
+    # Authenticate via Django auth
+    user = authenticate(request, username=username, password=password)
+
+    if user is None:
+        AuditService.log_event(
+            student_id_attempted=username,
+            event_type=AuditLog.EventType.ADMIN_LOGIN_ATTEMPT,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="Invalid admin credentials.",
+        )
+        return JsonResponse(
+            {"success": False, "error": GENERIC_ADMIN_AUTH_ERROR}, status=401
+        )
+
+    # Check for active admin profile
+    try:
+        profile = AdminProfile.objects.get(user=user, is_active=True)
+    except AdminProfile.DoesNotExist:
+        AuditService.log_event(
+            student_id_attempted=username,
+            event_type=AuditLog.EventType.ADMIN_LOGIN_ATTEMPT,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="User has no active admin profile.",
+        )
+        return JsonResponse(
+            {"success": False, "error": GENERIC_ADMIN_AUTH_ERROR}, status=401
+        )
+
+    # Log in via Django auth (sets session)
+    login(request, user)
+
+    AuditService.log_event(
+        student_id_attempted=username,
+        event_type=AuditLog.EventType.ADMIN_LOGIN_ATTEMPT,
+        success=True,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        details=f"Admin login successful. Role: {profile.get_role_display()}.",
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "username": user.username,
+            "role": profile.role,
+            "role_display": profile.get_role_display(),
+            "display_name": profile.display_name,
+        },
+        status=200,
+    )
+
+
+@require_POST
+def admin_logout(request: Any) -> JsonResponse:
+    """
+    End the admin session.
+
+    POST /api/admin/auth/logout/
+    """
+    ip_address: str = get_client_ip(request)
+    user_agent: str = get_user_agent(request)
+
+    username = "unknown"
+    if request.user.is_authenticated:
+        username = request.user.username
+        AuditService.log_event(
+            student_id_attempted=username,
+            event_type=AuditLog.EventType.ADMIN_LOGOUT,
+            success=True,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="Admin logged out.",
+        )
+
+    logout(request)
+    return JsonResponse(
+        {"success": True, "message": "Admin logged out successfully."},
         status=200,
     )

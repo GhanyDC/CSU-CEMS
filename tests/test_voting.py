@@ -16,13 +16,14 @@ from datetime import date, datetime, timezone
 from django.db import IntegrityError
 
 from apps.accounts.models import Student
-from apps.elections.models import Candidate, Election, Position
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
 from apps.voting.models import Ballot, BallotSelection
 from apps.voting.services import (
     BallotAlreadyCastError,
     BallotService,
     ElectionNotActiveError,
     InvalidSelectionError,
+    VoterNotEligibleError,
 )
 
 
@@ -65,6 +66,12 @@ def make_student(student_id="VOTE001", full_name="Voter One"):
     )
 
 
+def make_eligible(student, election):
+    return EligibleVoter.objects.create(
+        election=election, student=student, college_snapshot=student.college or "",
+    )
+
+
 def _sel(position, candidate):
     """Helper: returns a (position_id, candidate_id) string tuple."""
     return (str(position.pk), str(candidate.pk))
@@ -81,6 +88,7 @@ class TestBallotCreation:
         self.election = make_election()
         self.position = make_position(self.election)
         self.candidate = make_candidate(self.position)
+        make_eligible(self.student, self.election)
 
     def test_cast_ballot_succeeds(self) -> None:
         """A valid ballot is recorded successfully."""
@@ -123,6 +131,7 @@ class TestBallotCreation:
         election2 = make_election(name="By-Election 2026")
         pos2 = make_position(election2, title="Senator", category=Position.Category.SENATE)
         cand2 = make_candidate(pos2, full_name="Senator Candidate")
+        make_eligible(self.student, election2)
 
         BallotService.cast_ballot(
             self.student, self.election, [_sel(self.position, self.candidate)]
@@ -177,6 +186,7 @@ class TestElectionValidation:
         election = make_election(status=Election.Status.DRAFT)
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(self.student, election)
         with pytest.raises(ElectionNotActiveError):
             BallotService.cast_ballot(self.student, election, [_sel(pos, cand)])
 
@@ -185,6 +195,7 @@ class TestElectionValidation:
         election = make_election(status=Election.Status.CLOSED)
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(self.student, election)
         with pytest.raises(ElectionNotActiveError):
             BallotService.cast_ballot(self.student, election, [_sel(pos, cand)])
 
@@ -193,6 +204,7 @@ class TestElectionValidation:
         election = make_election(status=Election.Status.PUBLISHED)
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(self.student, election)
         with pytest.raises(ElectionNotActiveError):
             BallotService.cast_ballot(self.student, election, [_sel(pos, cand)])
 
@@ -206,6 +218,7 @@ class TestElectionValidation:
         )
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(self.student, election)
         with pytest.raises(ElectionNotActiveError):
             BallotService.cast_ballot(self.student, election, [_sel(pos, cand)])
 
@@ -219,12 +232,14 @@ class TestElectionValidation:
         )
         pos = make_position(election)
         cand = make_candidate(pos)
+        make_eligible(self.student, election)
         with pytest.raises(ElectionNotActiveError):
             BallotService.cast_ballot(self.student, election, [_sel(pos, cand)])
 
     def test_empty_selections_rejected(self) -> None:
         """Cannot submit a ballot with no selections."""
         election = make_election()
+        make_eligible(self.student, election)
         with pytest.raises(InvalidSelectionError):
             BallotService.cast_ballot(self.student, election, [])
 
@@ -240,6 +255,7 @@ class TestSelectionValidation:
         self.election = make_election()
         self.position = make_position(self.election)
         self.candidate = make_candidate(self.position)
+        make_eligible(self.student, self.election)
 
     def test_wrong_position_election_rejected(self) -> None:
         """Position from another election is rejected."""
@@ -355,3 +371,40 @@ class TestBallotModel:
         Ballot.objects.create(election=election, hashed_student_id=hashed)
         with pytest.raises(IntegrityError):
             Ballot.objects.create(election=election, hashed_student_id=hashed)
+
+
+# ── Voter eligibility ────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+class TestVoterEligibility:
+    """Test that only eligible voters can cast ballots."""
+
+    def setup_method(self) -> None:
+        self.student = make_student()
+        self.election = make_election()
+        self.position = make_position(self.election)
+        self.candidate = make_candidate(self.position)
+
+    def test_non_eligible_voter_rejected(self) -> None:
+        """A student not on the voter roll is rejected."""
+        with pytest.raises(VoterNotEligibleError, match="not on the approved voter roll"):
+            BallotService.cast_ballot(
+                self.student, self.election, [_sel(self.position, self.candidate)]
+            )
+
+    def test_eligible_voter_accepted(self) -> None:
+        """A student on the voter roll can cast a ballot."""
+        make_eligible(self.student, self.election)
+        ballot = BallotService.cast_ballot(
+            self.student, self.election, [_sel(self.position, self.candidate)]
+        )
+        assert ballot is not None
+
+    def test_eligible_in_wrong_election_rejected(self) -> None:
+        """Eligible in one election does not grant access to another."""
+        other_election = make_election(name="Other Election")
+        make_eligible(self.student, other_election)
+        with pytest.raises(VoterNotEligibleError):
+            BallotService.cast_ballot(
+                self.student, self.election, [_sel(self.position, self.candidate)]
+            )

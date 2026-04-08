@@ -8,12 +8,15 @@ import json
 from datetime import date, datetime, timezone
 
 import pytest
+from django.contrib.auth.models import User
 from django.test import Client
+from django.utils import timezone as tz
 
-from apps.accounts.models import Student
+from apps.accounts.models import AdminProfile, AdminRole, Student
 from apps.audit.models import AuditLog
-from apps.elections.models import Candidate, Election, Position
+from apps.elections.models import Candidate, Election, EligibleVoter, Position
 from apps.voting.models import Ballot
+from conftest import admin_client_for, create_admin_user, make_eligible, finalize_election_voter_roll
 
 
 def make_student(student_id, dob="2000-01-01", is_admin=False):
@@ -33,7 +36,11 @@ class TestFullVotingWorkflow:
 
     def test_complete_election_flow(self):
         # 1. Setup: admin, voter, election with positions/candidates
-        admin = make_student("ADMIN001", is_admin=True)
+        eb_head_user, eb_head_profile = create_admin_user(
+            username="eb_head",
+            role=AdminRole.ELECTORAL_BOARD_HEAD,
+            display_name="VP Integration Test",
+        )
         voter = make_student("VOTER001", dob="2001-06-15")
 
         election = Election.objects.create(
@@ -53,18 +60,15 @@ class TestFullVotingWorkflow:
             position=pres, full_name="Bob", party="Beta",
         )
 
-        client = Client(enforce_csrf_checks=False)
+        # 2. Admin client (authenticated via Django auth)
+        admin_client = admin_client_for(eb_head_user)
 
-        # 2. Admin login
-        resp = client.post(
-            "/api/auth/login/",
-            data=json.dumps({"student_id": "ADMIN001", "date_of_birth": "2000-01-01"}),
-            content_type="application/json",
-        )
-        assert resp.status_code == 200
+        # 2b. Setup voter roll: make voter eligible and finalize
+        make_eligible(voter, election)
+        finalize_election_voter_roll(election)
 
         # 3. Admin starts election (DRAFT → ACTIVE)
-        resp = client.post(
+        resp = admin_client.post(
             "/api/admin/elections/start/",
             data=json.dumps({"election_id": str(election.pk)}),
             content_type="application/json",
@@ -130,7 +134,7 @@ class TestFullVotingWorkflow:
         assert resp.status_code == 403
 
         # 11. Admin closes election
-        resp = client.post(
+        resp = admin_client.post(
             "/api/admin/elections/close/",
             data=json.dumps({"election_id": str(election.pk)}),
             content_type="application/json",
@@ -159,7 +163,7 @@ class TestFullVotingWorkflow:
         assert resp.status_code == 409
 
         # 13. Admin publishes results
-        resp = client.post(
+        resp = admin_client.post(
             "/api/admin/elections/publish/",
             data=json.dumps({"election_id": str(election.pk)}),
             content_type="application/json",
@@ -225,6 +229,7 @@ class TestMultiPositionBallotIntegration:
         sen_b = Candidate.objects.create(
             position=senate, full_name="Sen B", party="C",
         )
+        make_eligible(student, election)
 
         client = Client(enforce_csrf_checks=False)
         client.post(
@@ -256,7 +261,7 @@ class TestSecurityIntegration:
     """Test security-related integration scenarios."""
 
     def test_non_admin_cannot_manipulate_election(self):
-        """Regular student cannot start/close/publish elections."""
+        """Regular student (via student auth) cannot start/close/publish elections."""
         student = make_student("SEC001")
         election = Election.objects.create(
             name="Security Test",
@@ -272,6 +277,7 @@ class TestSecurityIntegration:
             content_type="application/json",
         )
 
+        # Student auth does not grant admin access — should get 401
         for url in [
             "/api/admin/elections/start/",
             "/api/admin/elections/close/",
@@ -282,7 +288,7 @@ class TestSecurityIntegration:
                 data=json.dumps({"election_id": str(election.pk)}),
                 content_type="application/json",
             )
-            assert resp.status_code == 403, f"Expected 403 for {url}"
+            assert resp.status_code == 401, f"Expected 401 for {url}"
 
         # Election should still be DRAFT
         election.refresh_from_db()
