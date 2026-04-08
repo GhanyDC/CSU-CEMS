@@ -20,6 +20,8 @@ urlpatterns: list = [
     path("api/admin/elections/start/", start_election, name="election-start"),
     path("api/admin/elections/close/", close_election, name="election-close"),
     path("api/admin/elections/publish/", publish_results, name="election-publish"),
+    # Admin election setup endpoints (Operator + EB Head)
+    path("api/admin/elections/setup/", include("apps.elections.admin_urls", namespace="admin_elections")),
     # Frontend UI
     path("", include("apps.frontend.urls", namespace="frontend")),
 ]

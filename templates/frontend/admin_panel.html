@@ -3,323 +3,794 @@
 
 {% block title %}Admin Panel{% endblock %}
 
+{% block extra_head %}
+<style>
+    .cursor-pointer { cursor: pointer; }
+    .election-row:hover { background-color: rgba(0,0,0,.03); }
+    .check-pass { color: #198754; }
+    .check-fail { color: #dc3545; }
+    .badge-draft { background-color: #6c757d; }
+    .badge-active { background-color: #198754; }
+    .badge-closed { background-color: #ffc107; color: #000; }
+    .badge-published { background-color: #0dcaf0; color: #000; }
+</style>
+{% endblock %}
+
 {% block navbar %}
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container">
-        <a class="navbar-brand fw-bold" href="/dashboard/">
-            <i class="bi bi-ballot-fill"></i> CEMS
+        <a class="navbar-brand fw-bold" href="/admin-panel/">
+            <i class="bi bi-ballot-fill"></i> CEMS Admin
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav me-auto">
-                <li class="nav-item"><a class="nav-link" href="/dashboard/"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
-                <li class="nav-item"><a class="nav-link" href="/ballot/"><i class="bi bi-pencil-square"></i> Vote</a></li>
-                <li class="nav-item"><a class="nav-link" href="/results/"><i class="bi bi-bar-chart-fill"></i> Results</a></li>
-                <li class="nav-item"><a class="nav-link active" href="/admin-panel/"><i class="bi bi-gear-fill"></i> Admin</a></li>
+                <li class="nav-item">
+                    <a class="nav-link active" href="#" onclick="showElectionList(); return false;">
+                        <i class="bi bi-list-ul"></i> Elections
+                    </a>
+                </li>
             </ul>
             <div class="navbar-text text-white me-3">
-                <i class="bi bi-shield-lock"></i> <span id="nav-user-name">Admin</span>
+                <i class="bi bi-shield-lock"></i>
+                <span id="nav-admin-name">Admin</span>
+                <span class="badge bg-secondary ms-1" id="nav-admin-role"></span>
             </div>
-            <button class="btn btn-outline-light btn-sm" id="logout-btn"><i class="bi bi-box-arrow-right"></i> Logout</button>
+            <button class="btn btn-outline-light btn-sm" id="admin-logout-btn">
+                <i class="bi bi-box-arrow-right"></i> Logout
+            </button>
         </div>
     </div>
 </nav>
 {% endblock %}
 
 {% block content %}
-<!-- Access Denied (shown to non-admins) -->
-<div class="alert alert-danger d-none" id="access-denied">
-    <i class="bi bi-shield-x"></i>
-    <strong>Access Denied.</strong> You do not have admin privileges.
-    <a href="/dashboard/" class="alert-link">Return to dashboard &rarr;</a>
-</div>
-
-<div id="admin-content" class="d-none">
-    <div class="d-flex align-items-center mb-4">
-        <a href="/dashboard/" class="btn btn-outline-secondary me-3"><i class="bi bi-arrow-left"></i></a>
+<!-- ── Election List View ──────────────────────────────────────────────── -->
+<div id="view-election-list">
+    <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-0"><i class="bi bi-gear-fill text-dark"></i> Election Administration</h2>
-            <p class="text-muted mb-0">Manage election lifecycle transitions</p>
+            <h2 class="mb-0"><i class="bi bi-gear-fill text-dark"></i> Election Management</h2>
+            <p class="text-muted mb-0">Create and manage elections</p>
+        </div>
+        <div class="d-flex gap-2" id="create-buttons">
+            <button class="btn btn-primary" onclick="showCreateCampusModal()">
+                <i class="bi bi-plus-circle"></i> Create Campus Election
+            </button>
+            <button class="btn btn-outline-primary" onclick="showCreateCollegeModal()">
+                <i class="bi bi-building"></i> Create College Elections
+            </button>
         </div>
     </div>
 
-    <!-- Election State Machine -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-dark text-white">
-            <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Election State Machine</h5>
-        </div>
-        <div class="card-body">
-            <div class="d-flex align-items-center justify-content-center flex-wrap gap-2 py-3">
-                <div class="state-node" id="state-draft">
-                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
-                        <i class="bi bi-file-earmark"></i> DRAFT
-                    </span>
-                </div>
-                <i class="bi bi-arrow-right text-muted fs-4"></i>
-                <div class="state-node" id="state-active">
-                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
-                        <i class="bi bi-broadcast"></i> ACTIVE
-                    </span>
-                </div>
-                <i class="bi bi-arrow-right text-muted fs-4"></i>
-                <div class="state-node" id="state-closed">
-                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
-                        <i class="bi bi-lock"></i> CLOSED
-                    </span>
-                </div>
-                <i class="bi bi-arrow-right text-muted fs-4"></i>
-                <div class="state-node" id="state-published">
-                    <span class="badge rounded-pill fs-6 px-3 py-2 bg-secondary">
-                        <i class="bi bi-megaphone"></i> PUBLISHED
-                    </span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Election Details -->
-    <div class="row g-4">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="bi bi-info-circle text-primary"></i> Election Details</h5>
-                </div>
-                <div class="card-body" id="election-details">
-                    <div class="text-muted">Loading...</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="bi bi-lightning text-warning"></i> Lifecycle Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-3" id="lifecycle-actions">
-                        <button class="btn btn-success btn-lg" id="btn-start" onclick="transitionElection('start')" disabled>
-                            <i class="bi bi-play-fill"></i> Start Election (DRAFT → ACTIVE)
-                        </button>
-                        <button class="btn btn-warning btn-lg" id="btn-close" onclick="transitionElection('close')" disabled>
-                            <i class="bi bi-stop-fill"></i> Close Election (ACTIVE → CLOSED)
-                        </button>
-                        <button class="btn btn-info btn-lg" id="btn-publish" onclick="transitionElection('publish')" disabled>
-                            <i class="bi bi-megaphone-fill"></i> Publish Results (CLOSED → PUBLISHED)
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Action Log -->
-    <div class="card border-0 shadow-sm mt-4">
-        <div class="card-header bg-white">
-            <h5 class="mb-0"><i class="bi bi-journal-text text-secondary"></i> Action Log</h5>
-        </div>
-        <div class="card-body">
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-sm" id="action-log-table">
-                    <thead><tr><th>Time</th><th>Action</th><th>Result</th></tr></thead>
-                    <tbody id="action-log-body"></tbody>
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Schedule</th>
+                            <th>Voter Roll</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="election-list-body">
+                        <tr><td colspan="6" class="text-center text-muted py-4">Loading elections...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
+
+<!-- ── Election Detail View ────────────────────────────────────────────── -->
+<div id="view-election-detail" class="d-none">
+    <div class="d-flex align-items-center mb-4">
+        <button class="btn btn-outline-secondary me-3" onclick="showElectionList()">
+            <i class="bi bi-arrow-left"></i> Back
+        </button>
+        <div>
+            <h2 class="mb-0" id="detail-election-name"></h2>
+            <span class="badge" id="detail-election-status"></span>
+            <span class="badge bg-light text-dark" id="detail-election-type"></span>
+        </div>
+    </div>
+
+    <!-- Nav tabs -->
+    <ul class="nav nav-tabs mb-3" id="detailTabs">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="tab" href="#tab-overview">Overview</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#tab-candidates">
+                Positions &amp; Candidates
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#tab-voterroll">Voter Roll</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="tab" href="#tab-readiness">Readiness</a>
+        </li>
+        <li class="nav-item" id="tab-lifecycle-nav">
+            <a class="nav-link" data-bs-toggle="tab" href="#tab-lifecycle">Lifecycle Actions</a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Overview tab -->
+        <div class="tab-pane fade show active" id="tab-overview">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm"><div class="card-body" id="overview-details"></div></div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm"><div class="card-body" id="overview-stats"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Candidates tab -->
+        <div class="tab-pane fade" id="tab-candidates">
+            <div id="candidates-content"></div>
+        </div>
+
+        <!-- Voter Roll tab -->
+        <div class="tab-pane fade" id="tab-voterroll">
+            <div id="voterroll-content"></div>
+        </div>
+
+        <!-- Readiness tab -->
+        <div class="tab-pane fade" id="tab-readiness">
+            <div id="readiness-content"></div>
+        </div>
+
+        <!-- Lifecycle tab -->
+        <div class="tab-pane fade" id="tab-lifecycle">
+            <div id="lifecycle-content"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Create Campus Election Modal ────────────────────────────────────── -->
+<div class="modal fade" id="createCampusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Create Campus Election</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">This will create a campus election with all constitutional positions:
+                President, Vice President, 12 Senators, 9 College Representatives, Party-List Representatives.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Election Name</label>
+                    <input type="text" class="form-control" id="campus-name"
+                           placeholder="e.g. AY 2025-2026 SSC General Election">
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Start Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="campus-start">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">End Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="campus-end">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitCreateCampus()">
+                    <i class="bi bi-check-lg"></i> Create Election
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Create College Elections Modal ──────────────────────────────────── -->
+<div class="modal fade" id="createCollegeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-building"></i> Create College Elections</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">This will create <strong>9 separate college elections</strong> (one per college),
+                each with Governor, Vice Governor, and 8 Board Member positions.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Name Prefix</label>
+                    <input type="text" class="form-control" id="college-prefix"
+                           placeholder="e.g. AY 2025-2026 College Election">
+                    <small class="text-muted">Each election will be named: [prefix] – [College Name]</small>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Start Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="college-start">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">End Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="college-end">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitCreateCollege()">
+                    <i class="bi bi-check-lg"></i> Create 9 Elections
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Add Candidate Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="addCandidateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus"></i> Add Candidate</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Position</label>
+                    <select class="form-select" id="candidate-position"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Full Name</label>
+                    <input type="text" class="form-control" id="candidate-name" placeholder="Full name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Party (optional)</label>
+                    <input type="text" class="form-control" id="candidate-party" placeholder="Party affiliation">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">College (optional)</label>
+                    <input type="text" class="form-control" id="candidate-college"
+                           placeholder="Required for College Representatives">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitAddCandidate()">
+                    <i class="bi bi-check-lg"></i> Add Candidate
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
+{{ bootstrap_admin|json_script:"cems-bootstrap-admin" }}
 <script>
-let currentElection = null;
+// ── Global state ──────────────────────────────────────────────────────────
+let adminUser = null;
+let currentElectionDetail = null;
 
-(async function() {
-    const user = CEMS.getUser();
-    if (!user) { window.location.href = '/'; return; }
-    document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
-    document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
-
-    if (!user.is_admin) {
-        document.getElementById('access-denied').classList.remove('d-none');
+// ── Initialization ────────────────────────────────────────────────────────
+(function() {
+    const el = document.getElementById('cems-bootstrap-admin');
+    if (el) {
+        try { adminUser = JSON.parse(el.textContent); } catch(e) {}
+    }
+    if (!adminUser) {
+        window.location.href = '/admin/login/';
         return;
     }
 
-    document.getElementById('admin-content').classList.remove('d-none');
-    await loadElectionState();
+    document.getElementById('nav-admin-name').textContent = adminUser.display_name;
+    document.getElementById('nav-admin-role').textContent = adminUser.role_display;
+
+    // Hide create buttons for read-only roles
+    if (adminUser.is_read_only) {
+        document.getElementById('create-buttons').classList.add('d-none');
+    }
+
+    document.getElementById('admin-logout-btn').addEventListener('click', async () => {
+        try { await CEMS.api('/api/admin/auth/logout/', { method: 'POST' }); } catch(e) {}
+        window.location.href = '/admin/login/';
+    });
+
+    loadElectionList();
 })();
 
-async function loadElectionState() {
+// ── Helpers ───────────────────────────────────────────────────────────────
+function esc(s) { return CEMS.escapeHtml(s); }
+
+function statusBadge(status) {
+    const cls = { draft:'badge-draft', active:'badge-active', closed:'badge-closed', published:'badge-published' }[status] || 'bg-secondary';
+    return `<span class="badge ${cls}">${(status||'').toUpperCase()}</span>`;
+}
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' });
+}
+
+function apiPost(url, body) {
+    return CEMS.api(url, { method: 'POST', body: JSON.stringify(body) });
+}
+
+// ── Election List ─────────────────────────────────────────────────────────
+function showElectionList() {
+    document.getElementById('view-election-list').classList.remove('d-none');
+    document.getElementById('view-election-detail').classList.add('d-none');
+    currentElectionDetail = null;
+    loadElectionList();
+}
+
+async function loadElectionList() {
     try {
-        // Try to get current active election
-        let elData = null;
-        try {
-            const res = await CEMS.api('/api/elections/current/');
-            if (res.success) elData = res.election;
-        } catch (e) { /* no active election */ }
+        const res = await CEMS.api('/api/admin/elections/setup/list/');
+        if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
 
-        // Try results endpoint for published elections
-        if (!elData) {
-            try {
-                const res = await CEMS.api('/api/elections/results/');
-                if (res.success) {
-                    currentElection = { id: res.election_id, name: res.election, status: 'published' };
-                }
-            } catch (e) { /* no published election either */ }
-        }
-
-        // Try status
-        const status = await CEMS.api('/api/elections/status/');
-        if (status.has_active_election) {
-            currentElection = { id: status.election_id, name: status.election_name, status: 'active' };
-            if (elData) {
-                currentElection.start_time = elData.start_time;
-                currentElection.end_time = elData.end_time;
-                currentElection.positions = elData.positions;
-            }
-        }
-
-        // If still no election, we need to indicate no info available
-        if (!currentElection) {
-            // Could be draft or closed - not visible via student APIs
-            document.getElementById('election-details').innerHTML = `
-                <div class="alert alert-info mb-0">
-                    <i class="bi bi-info-circle"></i>
-                    Election may be in DRAFT or CLOSED state. Use the buttons to attempt transitions.
-                    <br><small class="text-muted">Enter the Election UUID manually if needed.</small>
-                </div>
-                <div class="mt-3">
-                    <label class="form-label fw-semibold">Election UUID</label>
-                    <input type="text" class="form-control" id="manual-election-id"
-                           placeholder="paste election UUID here">
-                </div>`;
-            enableButtons('draft');
+        const tbody = document.getElementById('election-list-body');
+        if (res.elections.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No elections yet. Create one to get started.</td></tr>';
             return;
         }
 
-        updateUI();
+        tbody.innerHTML = res.elections.map(e => `
+            <tr class="election-row cursor-pointer" onclick="openElection('${e.id}')">
+                <td class="fw-semibold">${esc(e.name)}</td>
+                <td><span class="badge ${e.election_type==='campus'?'bg-primary':'bg-info text-dark'}">${e.election_type}</span></td>
+                <td>${statusBadge(e.status)}</td>
+                <td><small>${fmtDate(e.start_time)} – ${fmtDate(e.end_time)}</small></td>
+                <td>${e.voter_roll_finalized
+                    ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Finalized</span>'
+                    : '<span class="text-muted"><i class="bi bi-circle"></i> Pending</span>'}</td>
+                <td><i class="bi bi-chevron-right text-muted"></i></td>
+            </tr>
+        `).join('');
     } catch (err) {
-        CEMS.showToast('Error: ' + err.message, 'danger');
+        CEMS.showToast('Failed to load elections: ' + err.message, 'danger');
     }
 }
 
-function updateUI() {
-    if (!currentElection) return;
+// ── Election Detail ───────────────────────────────────────────────────────
+async function openElection(electionId) {
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${electionId}/`);
+        if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
+        currentElectionDetail = res.election;
+        renderElectionDetail();
+    } catch (err) {
+        CEMS.showToast('Failed to load election: ' + err.message, 'danger');
+    }
+}
 
-    const el = currentElection;
-    const st = el.status || 'unknown';
+function renderElectionDetail() {
+    const el = currentElectionDetail;
+    document.getElementById('view-election-list').classList.add('d-none');
+    document.getElementById('view-election-detail').classList.remove('d-none');
 
-    // Highlight active state
-    ['draft', 'active', 'closed', 'published'].forEach(s => {
-        const node = document.getElementById(`state-${s}`);
-        const badge = node.querySelector('.badge');
-        badge.className = `badge rounded-pill fs-6 px-3 py-2 ${s === st ? 'bg-primary' : 'bg-secondary'}`;
-    });
+    document.getElementById('detail-election-name').textContent = el.name;
+    document.getElementById('detail-election-status').className = 'badge ' +
+        ({ draft:'badge-draft', active:'badge-active', closed:'badge-closed', published:'badge-published' }[el.status] || 'bg-secondary');
+    document.getElementById('detail-election-status').textContent = el.status.toUpperCase();
+    document.getElementById('detail-election-type').textContent = el.election_type + (el.college ? ` – ${el.college}` : '');
 
-    // Election details
-    let detailsHtml = `
+    renderOverview(el);
+    renderCandidates(el);
+    renderVoterRoll(el);
+    loadReadiness(el.id);
+    renderLifecycle(el);
+
+    // Reset to overview tab
+    const firstTab = document.querySelector('#detailTabs .nav-link.active');
+    if (firstTab) firstTab.click();
+}
+
+function renderOverview(el) {
+    const vr = el.voter_roll_summary;
+    document.getElementById('overview-details').innerHTML = `
+        <h5 class="card-title"><i class="bi bi-info-circle text-primary"></i> Details</h5>
         <ul class="list-group list-group-flush">
-            <li class="list-group-item d-flex justify-content-between">
-                <span>Name</span><strong>${CEMS.escapeHtml(el.name || '—')}</strong>
-            </li>
-            <li class="list-group-item d-flex justify-content-between">
-                <span>Status</span>
-                <span class="badge ${getStatusClass(st)} fs-6">${st.toUpperCase()}</span>
-            </li>
-            <li class="list-group-item d-flex justify-content-between">
-                <span>UUID</span><code class="small">${el.id || '—'}</code>
-            </li>`;
-    if (el.start_time) {
-        detailsHtml += `<li class="list-group-item d-flex justify-content-between">
-            <span>Start</span><strong>${new Date(el.start_time).toLocaleString()}</strong></li>`;
+            <li class="list-group-item d-flex justify-content-between"><span>Type</span><strong>${el.election_type}${el.college ? ' – '+esc(el.college) : ''}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Status</span>${statusBadge(el.status)}</li>
+            <li class="list-group-item d-flex justify-content-between"><span>Start</span><strong>${fmtDate(el.start_time)}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>End</span><strong>${fmtDate(el.end_time)}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Positions</span><strong>${el.positions.length}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Candidates</span><strong>${el.positions.reduce((s,p)=>s+p.candidates.length,0)}</strong></li>
+        </ul>`;
+
+    document.getElementById('overview-stats').innerHTML = `
+        <h5 class="card-title"><i class="bi bi-people text-success"></i> Voter Roll</h5>
+        <ul class="list-group list-group-flush">
+            <li class="list-group-item d-flex justify-content-between"><span>Records Imported</span><strong>${vr.total}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Matched</span><strong class="text-success">${vr.matched}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Unmatched</span><strong class="text-danger">${vr.unmatched}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Approved Voters</span><strong class="text-primary">${vr.approved}</strong></li>
+            <li class="list-group-item d-flex justify-content-between"><span>Finalized</span>
+                ${el.voter_roll_finalized
+                    ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> Yes (${esc(el.voter_roll_finalized_by)})</span>`
+                    : '<span class="text-warning"><i class="bi bi-clock"></i> No</span>'}</li>
+        </ul>`;
+}
+
+// ── Candidates Tab ────────────────────────────────────────────────────────
+function renderCandidates(el) {
+    const isDraft = el.status === 'draft';
+    const canEdit = !adminUser.is_read_only;
+
+    let html = '';
+    if (isDraft && canEdit) {
+        html += `<div class="mb-3">
+            <button class="btn btn-primary btn-sm" onclick="showAddCandidateModal()">
+                <i class="bi bi-person-plus"></i> Add Candidate
+            </button>
+        </div>`;
     }
-    if (el.end_time) {
-        detailsHtml += `<li class="list-group-item d-flex justify-content-between">
-            <span>End</span><strong>${new Date(el.end_time).toLocaleString()}</strong></li>`;
+
+    for (const pos of el.positions) {
+        html += `<div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white d-flex justify-content-between">
+                <strong>${esc(pos.title)}</strong>
+                <span class="text-muted">${pos.category_display} · max ${pos.max_selections}</span>
+            </div>`;
+
+        if (pos.candidates.length === 0) {
+            html += `<div class="card-body text-muted"><em>No candidates yet</em></div>`;
+        } else {
+            html += '<ul class="list-group list-group-flush">';
+            for (const c of pos.candidates) {
+                const activeIcon = c.is_active
+                    ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                    : '<i class="bi bi-x-circle-fill text-danger"></i> <span class="text-muted">(inactive)</span>';
+                let actions = '';
+                if (isDraft && canEdit) {
+                    const toggleLabel = c.is_active ? 'Deactivate' : 'Activate';
+                    actions = `<button class="btn btn-outline-secondary btn-sm" onclick="toggleCandidate('${c.id}', ${!c.is_active})">${toggleLabel}</button>`;
+                }
+                html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        ${activeIcon}
+                        <strong class="ms-2">${esc(c.full_name)}</strong>
+                        ${c.party ? '<span class="text-muted ms-2">'+esc(c.party)+'</span>' : ''}
+                        ${c.college ? '<small class="text-muted ms-2">('+esc(c.college)+')</small>' : ''}
+                    </div>
+                    <div>${actions}</div>
+                </li>`;
+            }
+            html += '</ul>';
+        }
+        html += '</div>';
     }
-    if (el.positions) {
-        detailsHtml += `<li class="list-group-item d-flex justify-content-between">
-            <span>Positions</span><strong>${el.positions.length}</strong></li>`;
+
+    document.getElementById('candidates-content').innerHTML = html;
+}
+
+function showAddCandidateModal() {
+    if (!currentElectionDetail) return;
+    const sel = document.getElementById('candidate-position');
+    sel.innerHTML = currentElectionDetail.positions.map(p =>
+        `<option value="${p.id}">${esc(p.title)} (${p.category_display})</option>`
+    ).join('');
+    document.getElementById('candidate-name').value = '';
+    document.getElementById('candidate-party').value = '';
+    document.getElementById('candidate-college').value = '';
+    new bootstrap.Modal(document.getElementById('addCandidateModal')).show();
+}
+
+async function submitAddCandidate() {
+    const el = currentElectionDetail;
+    const body = {
+        position_id: document.getElementById('candidate-position').value,
+        full_name: document.getElementById('candidate-name').value,
+        party: document.getElementById('candidate-party').value,
+        college: document.getElementById('candidate-college').value,
+    };
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${el.id}/candidates/add/`, body);
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('addCandidateModal')).hide();
+            await openElection(el.id);
+        } else {
+            CEMS.showToast(res.error, 'danger');
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+async function toggleCandidate(candidateId, newActive) {
+    const el = currentElectionDetail;
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${el.id}/candidates/${candidateId}/update/`, { is_active: newActive });
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            await openElection(el.id);
+        } else {
+            CEMS.showToast(res.error, 'danger');
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Voter Roll Tab ────────────────────────────────────────────────────────
+function renderVoterRoll(el) {
+    const canEdit = !adminUser.is_read_only;
+    const isDraft = el.status === 'draft';
+    const finalized = el.voter_roll_finalized;
+    const vr = el.voter_roll_summary;
+
+    let html = `<div class="row g-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white"><h6 class="mb-0">Import &amp; Match Status</h6></div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between">Total Imported<strong>${vr.total}</strong></li>
+                        <li class="list-group-item d-flex justify-content-between">Matched<strong class="text-success">${vr.matched}</strong></li>
+                        <li class="list-group-item d-flex justify-content-between">Unmatched<strong class="text-danger">${vr.unmatched}</strong></li>
+                        <li class="list-group-item d-flex justify-content-between">Approved Voters<strong class="text-primary">${vr.approved}</strong></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white"><h6 class="mb-0">Actions</h6></div>
+                <div class="card-body">`;
+
+    if (finalized) {
+        html += `<div class="alert alert-success mb-0"><i class="bi bi-lock-fill"></i> Voter roll is <strong>finalized</strong> by ${esc(el.voter_roll_finalized_by)}.</div>`;
+    } else if (canEdit && isDraft) {
+        html += `
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Import Verification CSV</label>
+                <input type="file" class="form-control" id="csv-upload" accept=".csv">
+                <small class="text-muted">CSV must have a <code>student_id</code> column</small>
+            </div>
+            <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="uploadCSV()">
+                <i class="bi bi-upload"></i> Upload &amp; Import
+            </button>
+            <button class="btn btn-outline-success btn-sm mb-2 w-100" onclick="generateVoterRoll()">
+                <i class="bi bi-arrow-repeat"></i> Generate Voter Roll
+            </button>`;
+
+        if (adminUser.is_eb_head) {
+            html += `<button class="btn btn-warning btn-sm w-100" onclick="finalizeVoterRoll()">
+                <i class="bi bi-lock-fill"></i> Finalize Voter Roll (EB Head)
+            </button>`;
+        } else {
+            html += `<div class="alert alert-info mb-0 mt-2"><small><i class="bi bi-info-circle"></i> Only the Electoral Board Head can finalize the voter roll.</small></div>`;
+        }
+    } else {
+        html += `<div class="text-muted">No actions available.</div>`;
     }
-    detailsHtml += '</ul>';
-    document.getElementById('election-details').innerHTML = detailsHtml;
 
-    enableButtons(st);
+    html += `</div></div></div></div>`;
+
+    // Unmatched records section
+    html += `<div class="mt-3"><button class="btn btn-outline-secondary btn-sm" onclick="loadUnmatched()">
+        <i class="bi bi-search"></i> View Unmatched Records
+    </button></div>
+    <div id="unmatched-list" class="mt-2"></div>`;
+
+    document.getElementById('voterroll-content').innerHTML = html;
 }
 
-function getStatusClass(st) {
-    return { draft: 'bg-secondary', active: 'bg-success', closed: 'bg-warning text-dark', published: 'bg-info' }[st] || 'bg-secondary';
+async function uploadCSV() {
+    const el = currentElectionDetail;
+    const fileInput = document.getElementById('csv-upload');
+    if (!fileInput.files[0]) { CEMS.showToast('Select a CSV file first.', 'warning'); return; }
+
+    const formData = new FormData();
+    formData.append('csv_file', fileInput.files[0]);
+
+    try {
+        const response = await fetch(`/api/admin/elections/setup/${el.id}/voter-roll/import/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: formData,
+        });
+        const res = await response.json();
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            await openElection(el.id);
+        } else {
+            CEMS.showToast(res.error, 'danger');
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-function enableButtons(status) {
-    document.getElementById('btn-start').disabled = (status !== 'draft');
-    document.getElementById('btn-close').disabled = (status !== 'active');
-    document.getElementById('btn-publish').disabled = (status !== 'closed');
+async function generateVoterRoll() {
+    const el = currentElectionDetail;
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${el.id}/voter-roll/generate/`, {});
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            await openElection(el.id);
+        } else { CEMS.showToast(res.error, 'danger'); }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-function getElectionId() {
-    if (currentElection && currentElection.id) return currentElection.id;
-    const manualInput = document.getElementById('manual-election-id');
-    return manualInput ? manualInput.value.trim() : null;
+async function finalizeVoterRoll() {
+    if (!confirm('Finalize the voter roll? This cannot be undone.')) return;
+    const el = currentElectionDetail;
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${el.id}/voter-roll/finalize/`, {});
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            await openElection(el.id);
+        } else { CEMS.showToast(res.error, 'danger'); }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-async function transitionElection(action) {
-    const elId = getElectionId();
-    if (!elId) {
-        CEMS.showToast('No election ID available. Paste UUID manually.', 'warning');
+async function loadUnmatched() {
+    const el = currentElectionDetail;
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${el.id}/voter-roll/summary/`);
+        if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
+
+        const div = document.getElementById('unmatched-list');
+        if (res.unmatched_records.length === 0) {
+            div.innerHTML = '<div class="text-muted">No unmatched records.</div>';
+            return;
+        }
+        let html = `<div class="card border-0 shadow-sm"><div class="card-body p-0">
+            <table class="table table-sm mb-0"><thead><tr><th>Student ID</th><th>Name</th><th>College</th></tr></thead><tbody>`;
+        for (const r of res.unmatched_records) {
+            html += `<tr><td>${esc(r.student_id_input)}</td><td>${esc(r.full_name_input)}</td><td>${esc(r.college_input)}</td></tr>`;
+        }
+        html += `</tbody></table></div></div>`;
+        if (res.unmatched_total > res.unmatched_records.length) {
+            html += `<small class="text-muted">Showing ${res.unmatched_records.length} of ${res.unmatched_total} unmatched records.</small>`;
+        }
+        div.innerHTML = html;
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Readiness Tab ─────────────────────────────────────────────────────────
+async function loadReadiness(electionId) {
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${electionId}/readiness/`);
+        if (!res.success) { document.getElementById('readiness-content').innerHTML = '<div class="text-danger">Failed to load.</div>'; return; }
+
+        let html = `<div class="card border-0 shadow-sm"><div class="card-body">
+            <h5>${res.ready ? '<i class="bi bi-check-circle-fill text-success"></i> Ready to Start' : '<i class="bi bi-exclamation-triangle-fill text-warning"></i> Not Ready'}</h5>
+            <ul class="list-group list-group-flush">`;
+
+        for (const c of res.checks) {
+            const icon = c.passed ? '<i class="bi bi-check-circle-fill check-pass"></i>' : '<i class="bi bi-x-circle-fill check-fail"></i>';
+            html += `<li class="list-group-item d-flex justify-content-between"><div>${icon} ${esc(c.name)}</div><small class="text-muted">${esc(c.detail)}</small></li>`;
+        }
+        html += '</ul>';
+
+        if (res.blocking_issues.length > 0) {
+            html += '<div class="alert alert-warning mt-3 mb-0"><strong>Blocking Issues:</strong><ul class="mb-0">';
+            for (const issue of res.blocking_issues) {
+                html += `<li>${esc(issue)}</li>`;
+            }
+            html += '</ul></div>';
+        }
+        html += '</div></div>';
+        document.getElementById('readiness-content').innerHTML = html;
+    } catch (err) {
+        document.getElementById('readiness-content').innerHTML = '<div class="text-danger">Error loading readiness.</div>';
+    }
+}
+
+// ── Lifecycle Tab ─────────────────────────────────────────────────────────
+function renderLifecycle(el) {
+    const isHead = adminUser.is_eb_head;
+
+    // Show lifecycle tab only for EB Head
+    document.getElementById('tab-lifecycle-nav').classList.toggle('d-none', !isHead);
+
+    if (!isHead) {
+        document.getElementById('lifecycle-content').innerHTML = '';
         return;
     }
 
-    const actionMap = {
-        start: { url: '/api/admin/elections/start/', label: 'Start Election', confirm: 'Start the election? Students will be able to vote.' },
-        close: { url: '/api/admin/elections/close/', label: 'Close Election', confirm: 'Close the election? No more votes will be accepted.' },
-        publish: { url: '/api/admin/elections/publish/', label: 'Publish Results', confirm: 'Publish results? This is permanent and cannot be undone.' }
-    };
-
-    const cfg = actionMap[action];
-    if (!confirm(cfg.confirm)) return;
-
-    const btn = document.getElementById(`btn-${action}`);
-    const origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Processing...`;
-
-    try {
-        const res = await CEMS.api(cfg.url, {
-            method: 'POST',
-            body: JSON.stringify({ election_id: elId })
-        });
-
-        addLogEntry(cfg.label, res.success, res.error || `Status: ${res.status}`);
-
-        if (res.success) {
-            CEMS.showToast(`${cfg.label} succeeded! New status: ${res.status}`, 'success');
-            if (currentElection) currentElection.status = res.status;
-            updateUI();
-        } else {
-            CEMS.showToast(res.error || 'Action failed.', 'danger');
-            btn.innerHTML = origHtml;
-            btn.disabled = false;
-        }
-    } catch (err) {
-        addLogEntry(cfg.label, false, err.message);
-        CEMS.showToast('Error: ' + err.message, 'danger');
-        btn.innerHTML = origHtml;
-        btn.disabled = false;
-    }
+    const st = el.status;
+    document.getElementById('lifecycle-content').innerHTML = `
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-diagram-3"></i> Lifecycle Transitions</h5>
+                <div class="d-flex align-items-center gap-2 mb-4">
+                    ${['draft','active','closed','published'].map(s =>
+                        `<span class="badge rounded-pill fs-6 px-3 py-2 ${s===st?'bg-primary':'bg-secondary'}">${s.toUpperCase()}</span>
+                         ${s!=='published'?'<i class="bi bi-arrow-right text-muted"></i>':''}`
+                    ).join('')}
+                </div>
+                <div class="d-grid gap-3">
+                    <button class="btn btn-success btn-lg" ${st!=='draft'?'disabled':''} onclick="lifecycleAction('start')">
+                        <i class="bi bi-play-fill"></i> Start Election (DRAFT → ACTIVE)
+                    </button>
+                    <button class="btn btn-warning btn-lg" ${st!=='active'?'disabled':''} onclick="lifecycleAction('close')">
+                        <i class="bi bi-stop-fill"></i> Close Election (ACTIVE → CLOSED)
+                    </button>
+                    <button class="btn btn-info btn-lg" ${st!=='closed'?'disabled':''} onclick="lifecycleAction('publish')">
+                        <i class="bi bi-megaphone-fill"></i> Publish Results (CLOSED → PUBLISHED)
+                    </button>
+                </div>
+            </div>
+        </div>`;
 }
 
-function addLogEntry(action, success, detail) {
-    const tbody = document.getElementById('action-log-body');
-    const row = document.createElement('tr');
-    row.innerHTML = `
-        <td class="text-muted small">${new Date().toLocaleTimeString()}</td>
-        <td>${CEMS.escapeHtml(action)}</td>
-        <td>${success
-            ? '<span class="badge bg-success">Success</span>'
-            : `<span class="badge bg-danger">Failed</span> <small class="text-muted">${CEMS.escapeHtml(detail)}</small>`
-        }</td>`;
-    tbody.insertBefore(row, tbody.firstChild);
+async function lifecycleAction(action) {
+    const el = currentElectionDetail;
+    const msgs = {
+        start: 'Start the election? Students will be able to vote.',
+        close: 'Close the election? No more votes will be accepted.',
+        publish: 'Publish results? This is permanent.',
+    };
+    if (!confirm(msgs[action])) return;
+
+    try {
+        const res = await apiPost(`/api/admin/elections/${action}/`, { election_id: el.id });
+        if (res.success) {
+            CEMS.showToast(`Election ${action}ed successfully!`, 'success');
+            await openElection(el.id);
+        } else {
+            CEMS.showToast(res.error, 'danger');
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Create Campus Election ────────────────────────────────────────────────
+function showCreateCampusModal() {
+    document.getElementById('campus-name').value = '';
+    document.getElementById('campus-start').value = '';
+    document.getElementById('campus-end').value = '';
+    new bootstrap.Modal(document.getElementById('createCampusModal')).show();
+}
+
+async function submitCreateCampus() {
+    const name = document.getElementById('campus-name').value;
+    const start = document.getElementById('campus-start').value;
+    const end = document.getElementById('campus-end').value;
+
+    if (!name || !start || !end) { CEMS.showToast('Please fill all fields.', 'warning'); return; }
+
+    try {
+        const res = await apiPost('/api/admin/elections/setup/create-campus/', {
+            name, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString()
+        });
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('createCampusModal')).hide();
+            await loadElectionList();
+        } else { CEMS.showToast(res.error, 'danger'); }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Create College Elections ──────────────────────────────────────────────
+function showCreateCollegeModal() {
+    document.getElementById('college-prefix').value = '';
+    document.getElementById('college-start').value = '';
+    document.getElementById('college-end').value = '';
+    new bootstrap.Modal(document.getElementById('createCollegeModal')).show();
+}
+
+async function submitCreateCollege() {
+    const prefix = document.getElementById('college-prefix').value;
+    const start = document.getElementById('college-start').value;
+    const end = document.getElementById('college-end').value;
+
+    if (!prefix || !start || !end) { CEMS.showToast('Please fill all fields.', 'warning'); return; }
+
+    try {
+        const res = await apiPost('/api/admin/elections/setup/create-college/', {
+            name_prefix: prefix, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString()
+        });
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('createCollegeModal')).hide();
+            await loadElectionList();
+        } else { CEMS.showToast(res.error, 'danger'); }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 </script>
 {% endblock %}

@@ -95,15 +95,15 @@ def admin_page(request):
     if profile is None:
         return redirect("frontend:admin-login")
 
-    return render(
-        request,
-        "frontend/admin_panel.html",
-        {
-            "bootstrap_admin": {
-                "username": request.user.username,
-                "display_name": profile.display_name,
-                "role": profile.role,
-                "role_display": profile.get_role_display(),
-            }
-        },
-    )
+    context = {
+        "bootstrap_admin": {
+            "username": request.user.username,
+            "display_name": profile.display_name,
+            "role": profile.role,
+            "role_display": profile.get_role_display(),
+            "is_eb_head": profile.is_electoral_board_head,
+            "is_operator": profile.is_operator,
+            "is_read_only": profile.is_read_only,
+        }
+    }
+    return render(request, "frontend/admin_panel.html", context)
