@@ -596,16 +596,25 @@ function renderPrimaryAction() {
     let html = '';
     if (adminUser.is_eb_head) {
         const actionMap = {
-            draft:     { cls: 'btn-cems-primary', icon: 'bi-play-fill', label: 'Start Election', action: 'start', sub: 'Open voting to all eligible students' },
-            active:    { cls: 'btn-cems-danger',  icon: 'bi-stop-fill', label: 'Close Election',  action: 'close',  sub: 'End voting period for all students' },
-            closed:    { cls: 'btn-cems-success', icon: 'bi-megaphone', label: 'Publish Results', action: 'publish', sub: 'Make results visible to students' },
+            active:    { cls: 'btn-cems-danger',  icon: 'bi-stop-fill',   label: 'Close Election',  action: 'close',   sub: 'End voting period for all students' },
+            closed:    { cls: 'btn-cems-success', icon: 'bi-megaphone',   label: 'Publish Results', action: 'publish', sub: 'Make results visible to students' },
         };
-        const a = actionMap[el.status];
-        if (a) {
+        if (el.status === 'draft') {
+            // Rendered disabled initially; loadReadiness() will enable it if ready
             html = `<div class="primary-action-wrap">
-                <button class="btn ${a.cls}" onclick="lifecycleAction('${a.action}')"><i class="bi ${a.icon}"></i> ${a.label}</button>
-                <div class="action-sub">${a.sub}</div>
+                <button class="btn btn-cems-primary" id="start-election-btn" onclick="lifecycleAction('start')" disabled>
+                    <i class="bi bi-play-fill"></i> Start Election
+                </button>
+                <div class="action-sub" id="primary-action-sub"><i class="bi bi-hourglass-split me-1"></i>Checking readiness…</div>
             </div>`;
+        } else {
+            const a = actionMap[el.status];
+            if (a) {
+                html = `<div class="primary-action-wrap">
+                    <button class="btn ${a.cls}" onclick="lifecycleAction('${a.action}')"><i class="bi ${a.icon}"></i> ${a.label}</button>
+                    <div class="action-sub">${a.sub}</div>
+                </div>`;
+            }
         }
     }
     document.getElementById('detail-primary-action').innerHTML = html;
@@ -626,60 +635,165 @@ function switchTab(tab) {
 // ── Overview Tab ─────────────────────────────────────────────────────────
 function renderOverview() {
     const el = currentElectionDetail;
-    const vr = el.voter_roll_summary;
+    const vr = el.voter_roll_summary || {};
+    const t  = el.turnout || {};
+    const eligible = t.total_eligible ?? (vr.approved ?? 0);
+    const voted    = t.total_voted ?? 0;
+    const pct      = eligible > 0 ? (voted / eligible * 100) : 0;
+    const pctStr   = pct.toFixed(1);
     const totalCands = el.positions.reduce((s, p) => s + p.candidates.filter(c => c.is_active).length, 0);
-    const statusColors = { draft: 'var(--cems-danger)', active: 'var(--cems-success)', closed: 'var(--cems-danger)', published: 'var(--cems-success)' };
-    const statusColor = statusColors[el.status] || 'var(--cems-text)';
-    const turnoutText = el.status === 'active' || el.status === 'closed' || el.status === 'published'
-        ? `${(vr.approved||0).toLocaleString()}`
-        : '—';
-    const turnoutSub = el.status === 'draft' ? 'Not yet voting' : `${vr.approved||0} eligible`;
+    const posWithoutCands = el.positions.filter(p => p.candidates.filter(c => c.is_active).length === 0).length;
 
-    let html = `
-        <div class="row g-3 mb-4">
-            <div class="col-6 col-md-3"><div class="metric-card">
-                <div class="metric-label">Election Status</div>
-                <div class="metric-value" style="color:${statusColor}">${cap(el.status)}</div>
-            </div></div>
-            <div class="col-6 col-md-3"><div class="metric-card">
-                <div class="metric-label">Scheduled Period</div>
-                <div class="metric-value" style="font-size:1rem;font-weight:700">${fmtDate(el.start_time)}</div>
-                <div class="metric-sub">to ${fmtDate(el.end_time)}</div>
-            </div></div>
-            <div class="col-6 col-md-3"><div class="metric-card">
-                <div class="metric-label">Turnout</div>
-                <div class="metric-value">${turnoutText}</div>
-                <div class="metric-sub">${turnoutSub}</div>
-            </div></div>
-            <div class="col-6 col-md-3"><div class="metric-card">
-                <div class="metric-label">Positions</div>
-                <div class="metric-value">${el.positions.length}</div>
-                <div class="metric-sub">${totalCands} candidates</div>
-            </div></div>
-        </div>`;
+    const now = new Date();
+    const endDt = new Date(el.end_time);
+    const startDt = new Date(el.start_time);
+    const msLeft = endDt - now;
+    const totalMs = endDt - startDt;
 
-    // Voter summary section
-    if (vr.total > 0) {
-        html += `<div class="cems-card p-4 mb-4">
-            <h5 class="mb-1">Voter Summary</h5>
-            <p class="text-muted mb-3" style="font-size:0.85rem">Voter roll status and approval breakdown</p>
-            <div class="row g-3 mb-4">
-                <div class="col-md-4"><div class="metric-label">Total Imported</div><div class="fw-bold fs-4" style="color:var(--cems-primary)">${(vr.total||0).toLocaleString()}</div></div>
-                <div class="col-md-4"><div class="metric-label">Matched</div><div class="fw-bold fs-4">${(vr.matched||0).toLocaleString()}</div></div>
-                <div class="col-md-4"><div class="metric-label">Approved</div><div class="fw-bold fs-4" style="color:var(--cems-success)">${(vr.approved||0).toLocaleString()}</div></div>
-            </div>`;
-        // Approved by college breakdown (from voter_roll_summary if available)
-        if (vr.approved_by_college && Object.keys(vr.approved_by_college).length) {
-            html += `<h6 class="mb-2">Approved Voters by College</h6>`;
-            Object.entries(vr.approved_by_college).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([col,cnt]) => {
-                html += `<div class="info-list-item"><span class="info-label">${esc(col)}</span><span class="info-value">${cnt.toLocaleString()}</span></div>`;
-            });
-        }
-        html += '</div>';
+    function fmtTimeLeft(ms) {
+        if (ms <= 0) return 'Ending soon';
+        const totalH = Math.floor(ms / 3600000);
+        const d = Math.floor(totalH / 24);
+        const h = totalH % 24;
+        const m = Math.floor((ms % 3600000) / 60000);
+        if (d > 0) return `${d}d ${h}h`;
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m`;
     }
 
-    // Readiness checklist (draft only)
-    if (el.status === 'draft') { html += '<div id="readiness-content"></div>'; }
+    function fmtDuration(ms) {
+        const d = Math.round(ms / 86400000);
+        return d === 1 ? '1 day' : `${d} days`;
+    }
+
+    function progressBar(pctVal, cls = '') {
+        const w = Math.min(Math.max(pctVal, 0), 100).toFixed(1);
+        return `<div class="metric-bar-wrap"><div class="metric-bar ${cls}" style="width:${w}%"></div></div>`;
+    }
+
+    function mc(label, value, sub, colorStyle, footer) {
+        const colorAttr = colorStyle ? ` style="color:${colorStyle}"` : '';
+        return `<div class="col-6 col-md-3">
+            <div class="metric-card">
+                <div class="metric-label">${label}</div>
+                <div class="metric-value"${colorAttr}>${value}</div>
+                ${sub ? `<div class="metric-sub">${sub}</div>` : ''}
+                ${footer ? `<div class="metric-footer">${footer}</div>` : ''}
+            </div>
+        </div>`;
+    }
+
+    // ── Status card ──────────────────────────────────────────────────────
+    const statusStyles = {
+        draft:     { color: 'var(--cems-danger)',        sub: 'Setup in progress' },
+        active:    { color: 'var(--cems-success)',       sub: 'Voting is open' },
+        closed:    { color: 'var(--cems-text-secondary)', sub: 'Voting has ended' },
+        published: { color: '#0F766E',                   sub: 'Results are public' },
+    };
+    const ss = statusStyles[el.status] || {};
+
+    let cards = mc('Election Status', cap(el.status), ss.sub, ss.color);
+
+    // ── Status-dependent cards 2–4 ───────────────────────────────────────
+    if (el.status === 'draft') {
+        cards += mc('Scheduled Period', fmtDate(el.start_time), `to ${fmtDate(el.end_time)}`);
+        const candColor = posWithoutCands > 0 ? 'var(--cems-danger)' : (totalCands > 0 ? 'var(--cems-success)' : '');
+        const candSub   = posWithoutCands > 0
+            ? `${posWithoutCands} position(s) unfilled`
+            : `across ${el.positions.length} position(s)`;
+        cards += mc('Candidates', totalCands || '—', candSub, candColor);
+        const eligSub = eligible > 0 ? 'Voter roll ready' : 'Voter roll not generated';
+        cards += mc('Eligible Voters', eligible > 0 ? eligible.toLocaleString() : '—', eligSub, eligible > 0 ? 'var(--cems-success)' : '');
+
+    } else if (el.status === 'active') {
+        const barCls = pct >= 50 ? 'bar-success' : '';
+        cards += mc('Votes Cast', voted.toLocaleString(),
+            `of ${eligible.toLocaleString()} eligible`,
+            'var(--cems-primary)',
+            progressBar(pct, barCls));
+        const timeRemStr = fmtTimeLeft(msLeft);
+        const timeColor  = msLeft < 3600000 ? 'var(--cems-danger)' : msLeft < 86400000 ? 'var(--cems-warning)' : '';
+        cards += mc('Time Remaining', timeRemStr, `Closes ${fmtDate(el.end_time)}`, timeColor,
+            progressBar(Math.max(0, (msLeft / totalMs) * 100)));
+        cards += mc('Turnout', `${pctStr}%`, `${voted.toLocaleString()} voted`,
+            pct >= 50 ? 'var(--cems-success)' : '', progressBar(pct, barCls));
+
+    } else {
+        // closed / published
+        const barCls = pct >= 50 ? 'bar-success' : 'bar-warning';
+        cards += mc('Final Turnout', `${pctStr}%`, `${voted.toLocaleString()} of ${eligible.toLocaleString()} voted`,
+            pct >= 50 ? 'var(--cems-success)' : 'var(--cems-danger)',
+            progressBar(pct, barCls));
+        cards += mc('Votes Cast', voted.toLocaleString(), `out of ${eligible.toLocaleString()} eligible`);
+        cards += mc('Voting Period', fmtDuration(totalMs), `${fmtDate(el.start_time)} — ${fmtDate(el.end_time)}`);
+    }
+
+    let html = `<div class="row g-3 mb-4">${cards}</div>`;
+
+    // ── Voter roll summary section ───────────────────────────────────────
+    if (el.status !== 'draft' && eligible > 0) {
+        const matchPct = vr.total > 0 ? Math.round(vr.matched / vr.total * 100) : 0;
+        html += `<div class="cems-card mb-4">
+            <div class="cems-card-header d-flex align-items-center gap-2">
+                <i class="bi bi-people-fill" style="color:var(--cems-primary)"></i>
+                <span class="fw-semibold">Voter Roll Summary</span>
+                ${el.registrar_batch_name ? `<span class="ms-auto badge bg-light text-dark border" style="font-size:0.75rem;font-weight:500"><i class="bi bi-database me-1"></i>${esc(el.registrar_batch_name)}</span>` : ''}
+            </div>
+            <div class="row g-0">
+                <div class="col-6 col-md-3 p-3 border-end border-bottom">
+                    <div class="metric-label">Imported Records</div>
+                    <div class="fw-bold fs-5">${(vr.total||0).toLocaleString()}</div>
+                </div>
+                <div class="col-6 col-md-3 p-3 border-end border-bottom">
+                    <div class="metric-label">Matched</div>
+                    <div class="fw-bold fs-5">${(vr.matched||0).toLocaleString()}
+                        <small class="fw-normal text-muted fs-6">(${matchPct}%)</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 p-3 border-end border-bottom">
+                    <div class="metric-label">Eligible Voters</div>
+                    <div class="fw-bold fs-5" style="color:var(--cems-success)">${eligible.toLocaleString()}</div>
+                    <div class="metric-sub">Finalized voter roll</div>
+                </div>
+                <div class="col-6 col-md-3 p-3 border-bottom">
+                    <div class="metric-label">Participation Rate</div>
+                    <div class="fw-bold fs-5">${pctStr}%</div>
+                    <div class="metric-sub">${voted.toLocaleString()} voted</div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // ── Draft: pre-flight placeholder (filled by loadReadiness) ─────────
+    if (el.status === 'draft') {
+        html += `<div id="readiness-content">
+            <div class="cems-card p-4 text-center text-muted">
+                <i class="bi bi-hourglass-split me-2"></i>Checking readiness…
+            </div>
+        </div>`;
+    }
+
+    // ── Non-draft: positions summary ─────────────────────────────────────
+    if (el.status !== 'draft' && el.positions.length) {
+        html += `<div class="cems-card mb-4">
+            <div class="cems-card-header d-flex align-items-center gap-2">
+                <i class="bi bi-list-check" style="color:var(--cems-primary)"></i>
+                <span class="fw-semibold">Positions &amp; Candidates</span>
+                <span class="ms-auto text-muted" style="font-size:0.8rem">${totalCands} total candidates</span>
+            </div>
+            <div class="p-0">
+                ${el.positions.map(p => {
+                    const active = p.candidates.filter(c => c.is_active).length;
+                    return `<div class="readiness-row">
+                        <span class="readiness-icon"><i class="bi bi-person-lines-fill" style="color:var(--cems-primary);font-size:0.9rem"></i></span>
+                        <span class="readiness-name">${esc(p.title)}</span>
+                        <span class="readiness-detail">${active} candidate${active !== 1 ? 's' : ''}</span>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    }
+
     document.getElementById('tab-overview').innerHTML = html;
     if (el.status === 'draft') loadReadiness(el.id);
 }
@@ -688,20 +802,54 @@ async function loadReadiness(electionId) {
     try {
         const res = await CEMS.api(`/api/admin/elections/setup/${electionId}/readiness/`);
         if (!res.success) return;
-        let html = `<div class="cems-card p-4"><h5 class="mb-3"><i class="bi bi-clipboard-check"></i> Pre-flight Checklist
-            ${res.ready ? '<span class="badge-status badge-active ms-2">Ready</span>' : '<span class="badge-status badge-draft ms-2">Not Ready</span>'}</h5>`;
+
+        // Update the primary Start button state
+        const startBtn = document.getElementById('start-election-btn');
+        const subEl    = document.getElementById('primary-action-sub');
+        if (startBtn) {
+            if (res.ready) {
+                startBtn.disabled = false;
+                if (subEl) subEl.innerHTML = '<i class="bi bi-check-circle me-1" style="color:var(--cems-success)"></i>All conditions met — ready to open voting';
+            } else {
+                startBtn.disabled = true;
+                const n = res.blocking_issues.length;
+                if (subEl) subEl.innerHTML = `<i class="bi bi-exclamation-triangle me-1" style="color:var(--cems-warning)"></i>${n} condition${n !== 1 ? 's' : ''} must be resolved first`;
+            }
+        }
+
+        const readyBadge = res.ready
+            ? '<span class="badge-status badge-active ms-2">Ready</span>'
+            : '<span class="badge-status badge-draft ms-2">Not Ready</span>';
+
+        let html = `<div class="cems-card">
+            <div class="cems-card-header d-flex align-items-center">
+                <i class="bi bi-clipboard-check me-2" style="color:var(--cems-primary)"></i>
+                <span class="fw-semibold">Pre-flight Checklist</span>
+                ${readyBadge}
+            </div>
+            <div class="p-0">`;
+
         for (const c of res.checks) {
             const icon = c.passed
                 ? '<i class="bi bi-check-circle-fill" style="color:var(--cems-success)"></i>'
                 : '<i class="bi bi-x-circle-fill" style="color:var(--cems-danger)"></i>';
-            html += `<div class="d-flex align-items-center gap-2 py-2 border-bottom"><span>${icon}</span><span class="fw-medium">${esc(c.name)}</span><span class="text-muted ms-auto" style="font-size:0.8rem">${esc(c.detail)}</span></div>`;
+            const rowCls = c.passed ? 'row-pass' : 'row-fail';
+            html += `<div class="readiness-row ${rowCls}">
+                <span class="readiness-icon">${icon}</span>
+                <span class="readiness-name">${esc(c.name)}</span>
+                <span class="readiness-detail">${esc(c.detail)}</span>
+            </div>`;
         }
+
         if (res.blocking_issues.length) {
-            html += '<div class="alert mt-3 mb-0" style="background:var(--cems-warning-bg);border:1px solid var(--cems-warning);color:var(--cems-warning);border-radius:var(--cems-radius-sm)"><strong>Blocking:</strong><ul class="mb-0 ps-3">';
+            html += `<div class="readiness-blocking">
+                <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Blocking issues — resolve before starting:</strong>
+                <ul class="mb-0 mt-1 ps-4">`;
             for (const i of res.blocking_issues) html += `<li>${esc(i)}</li>`;
-            html += '</ul></div>';
+            html += `</ul></div>`;
         }
-        html += '</div>';
+
+        html += '</div></div>';
         const target = document.getElementById('readiness-content');
         if (target) target.innerHTML = html;
     } catch (e) { console.error(e); }
@@ -1184,12 +1332,31 @@ function renderBatches() {
         document.getElementById('batches-list').innerHTML = '<div class="empty-state"><i class="bi bi-database"></i><p>No registrar batches yet</p></div>';
         return;
     }
-    document.getElementById('batches-list').innerHTML = batchList.map(b => `
+    const canDeleteBatch = adminUser.is_eb_head;
+    document.getElementById('batches-list').innerHTML = batchList.map(b => {
+        const hasData = b.total_imported > 0;
+        const importLabel = hasData
+            ? `<i class="bi bi-arrow-repeat"></i> Append / Update CSV`
+            : `<i class="bi bi-upload"></i> Import CSV`;
+        const deleteBtn = canDeleteBatch
+            ? `<button class="btn btn-outline-danger btn-sm" onclick="deleteBatch('${b.id}','${esc(b.name).replace(/'/g,"\\'")}')" title="Delete batch"><i class="bi bi-trash3"></i></button>`
+            : '';
+        return `
         <div class="election-card" style="cursor:default">
-            <div style="flex:1"><div class="election-card-title">${esc(b.name)}</div>
-            <div class="election-card-meta"><span><i class="bi bi-mortarboard"></i> ${esc(b.academic_year||'—')}</span><span><i class="bi bi-people"></i> ${b.total_imported} students</span><span><i class="bi bi-person"></i> By: ${esc(b.imported_by||'—')}</span></div></div>
-            <button class="btn btn-cems-outline btn-sm" onclick="openBatchImport('${b.id}')"><i class="bi bi-upload"></i> Import CSV</button>
-        </div>`).join('');
+            <div style="flex:1">
+                <div class="election-card-title">${esc(b.name)}</div>
+                <div class="election-card-meta">
+                    <span><i class="bi bi-mortarboard"></i> ${esc(b.academic_year||'—')}</span>
+                    <span><i class="bi bi-people"></i> ${b.total_imported.toLocaleString()} students</span>
+                    <span><i class="bi bi-person"></i> By: ${esc(b.imported_by||'—')}</span>
+                </div>
+            </div>
+            <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                <button class="btn btn-cems-outline btn-sm" onclick="openBatchImport('${b.id}',${b.total_imported})">${importLabel}</button>
+                ${deleteBtn}
+            </div>
+        </div>`;
+    }).join('');
 }
 
 function showCreateBatchModal() {
@@ -1212,10 +1379,36 @@ async function submitCreateBatch() {
 }
 
 let importBatchId = null;
-function openBatchImport(batchId) {
+function openBatchImport(batchId, totalImported) {
     importBatchId = batchId;
     document.getElementById('batch-csv-input').value = '';
+    // Adjust modal title and hint based on whether data already exists
+    const isAppend = totalImported > 0;
+    const titleEl = document.querySelector('#importBatchModal .modal-title');
+    if (titleEl) titleEl.textContent = isAppend ? 'Append / Update Registrar Data' : 'Import Registrar Data';
+    const hintEl = document.querySelector('#importBatchModal .upload-zone-hint');
+    if (hintEl) hintEl.textContent = isAppend
+        ? `Existing ${totalImported.toLocaleString()} students will be updated; new ones added.`
+        : 'Max 50,000 rows';
+    const submitBtn = document.querySelector('#importBatchModal .btn-cems-primary');
+    if (submitBtn) submitBtn.innerHTML = isAppend
+        ? '<i class="bi bi-arrow-repeat me-1"></i>Append / Update'
+        : '<i class="bi bi-upload me-1"></i>Import';
     new bootstrap.Modal(document.getElementById('importBatchModal')).show();
+}
+
+async function deleteBatch(batchId, batchName) {
+    showConfirm(
+        'Delete Registrar Batch',
+        `This will permanently delete <strong>${esc(batchName)}</strong> and all its imported student data. This cannot be undone.`,
+        async () => {
+            try {
+                const res = await apiPost(`/api/admin/elections/setup/registrar-batches/${batchId}/delete/`, {});
+                if (res.success) { CEMS.showToast(res.message, 'success'); await showBatchesView(); }
+                else CEMS.showToast(res.error, 'danger');
+            } catch (err) { CEMS.showToast(err.message, 'danger'); }
+        }
+    );
 }
 
 async function submitBatchImport() {

@@ -341,14 +341,61 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; color: var(--cems-text); }
     border-radius: var(--cems-radius);
     padding: 1.25rem;
     text-align: left;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
-.metric-card .metric-label { font-size: 0.8rem; color: var(--cems-text-secondary); margin-bottom: 0.25rem; font-weight: 500; }
+.metric-card .metric-label { font-size: 0.78rem; color: var(--cems-text-secondary); margin-bottom: 0.35rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; }
 .metric-card .metric-value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
 .metric-card .metric-sub { font-size: 0.75rem; color: var(--cems-text-secondary); margin-top: 0.25rem; }
+.metric-card .metric-footer { margin-top: auto; padding-top: 0.75rem; }
 .metric-value.text-primary { color: var(--cems-primary) !important; }
 .metric-value.text-success { color: var(--cems-success) !important; }
 .metric-value.text-warning { color: var(--cems-warning) !important; }
 .metric-value.text-danger { color: var(--cems-danger) !important; }
+
+/* Progress bar inside metric cards */
+.metric-bar-wrap {
+    background: var(--cems-bg);
+    border-radius: 100px;
+    height: 6px;
+    overflow: hidden;
+    margin-top: 0.6rem;
+}
+.metric-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--cems-primary-light), var(--cems-primary));
+    border-radius: 100px;
+    transition: width 0.6s ease;
+    min-width: 2px;
+}
+.metric-bar.bar-success { background: linear-gradient(90deg, #34D399, #059669); }
+.metric-bar.bar-warning { background: linear-gradient(90deg, #FCD34D, #F59E0B); }
+
+/* Readiness checklist rows */
+.readiness-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--cems-border);
+    font-size: 0.9rem;
+}
+.readiness-row:last-child { border-bottom: none; }
+.readiness-icon { flex-shrink: 0; font-size: 1.05rem; line-height: 1; }
+.readiness-name { flex: 1; font-weight: 500; color: var(--cems-text); }
+.readiness-detail { font-size: 0.78rem; color: var(--cems-text-secondary); text-align: right; max-width: 50%; }
+.readiness-row.row-pass { background: #F0FDF4; }
+.readiness-row.row-fail { background: #FFF5F5; }
+.readiness-blocking {
+    margin: 0.75rem 1.25rem 1rem;
+    padding: 0.75rem 1rem;
+    background: #FFF7ED;
+    border: 1px solid #FED7AA;
+    border-radius: var(--cems-radius-sm);
+    font-size: 0.85rem;
+    color: #92400E;
+}
 
 /* ---------- Buttons ---------- */
 .btn-cems-primary {

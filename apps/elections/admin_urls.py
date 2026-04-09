@@ -48,6 +48,7 @@ urlpatterns = [
     path("registrar-batches/", admin_views.list_registrar_batches, name="registrar-batches"),
     path("registrar-batches/create/", admin_views.create_registrar_batch, name="registrar-batch-create"),
     path("registrar-batches/<uuid:batch_id>/import/", admin_views.import_registrar_batch, name="registrar-batch-import"),
+    path("registrar-batches/<uuid:batch_id>/delete/", admin_views.delete_registrar_batch, name="registrar-batch-delete"),
     path("<uuid:election_id>/registrar-batch/assign/", admin_views.assign_registrar_batch, name="registrar-batch-assign"),
 
     # Readiness check

@@ -23,6 +23,7 @@ from apps.accounts.models import AdminRole
 from apps.elections.models import Candidate, College, Election, Position, RegistrarImportBatch
 from apps.elections.services import (
     RegistrarBatchService,
+    TurnoutService,
     VoterRollError,
     VoterRollService,
 )
@@ -167,6 +168,9 @@ def _serialize_election_detail(election):
     match_summary = VoterRollService.get_match_summary(election)
     approved_count = VoterRollService.get_approved_count(election)
 
+    # Turnout data (votes cast vs eligible voters)
+    turnout = TurnoutService.compute_turnout(election)
+
     return {
         "id": str(election.pk),
         "name": election.name,
@@ -188,6 +192,11 @@ def _serialize_election_detail(election):
         "voter_roll_summary": {
             **match_summary,
             "approved": approved_count,
+        },
+        "turnout": {
+            "total_eligible": turnout["total_eligible"],
+            "total_voted": turnout["total_voted"],
+            "turnout_percentage": turnout["turnout_percentage"],
         },
     }
 
@@ -1007,6 +1016,47 @@ def import_registrar_batch(request, batch_id):
         ),
         "summary": summary,
     })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
+def delete_registrar_batch(request, batch_id):
+    """
+    POST /api/admin/elections/setup/registrar-batches/<batch_id>/delete/
+
+    Permanently delete a registrar import batch.
+    Restricted to EB Head only.
+    Blocked if any elections reference this batch (PROTECT FK).
+    """
+    try:
+        batch = RegistrarImportBatch.objects.get(pk=batch_id)
+    except (RegistrarImportBatch.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse({"success": False, "error": "Batch not found."}, status=404)
+
+    election_count = batch.elections.count()
+    if election_count:
+        noun = "election" if election_count == 1 else "elections"
+        return JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    f"Cannot delete — this batch is referenced by "
+                    f"{election_count} {noun}. Unlink all elections first."
+                ),
+            },
+            status=400,
+        )
+
+    batch_name = batch.name
+    batch.delete()
+    logger.info(
+        "Registrar batch '%s' deleted by %s",
+        batch_name,
+        request.admin_profile.display_name,
+    )
+    return JsonResponse({"success": True, "message": f"Batch '{batch_name}' deleted."})
 
 
 @require_POST
