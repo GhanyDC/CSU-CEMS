@@ -894,26 +894,42 @@ footer {
 .vr-filter-bar {
     display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;
 }
-.vr-search {
-    flex: 1; min-width: 200px; position: relative;
+
+/* Voter Roll Pipeline Stepper */
+.vr-finalized-banner {
+    background: var(--cems-success-bg); border: 1px solid var(--cems-success);
+    color: var(--cems-success); border-radius: var(--cems-radius-sm);
+    padding: 0.75rem 1.25rem; font-size: 0.88rem; font-weight: 500;
+    display: flex; align-items: center; gap: 0.5rem;
 }
-.vr-search input {
-    width: 100%; border: 1px solid var(--cems-border); border-radius: var(--cems-radius-sm);
-    padding: 0.55rem 1rem 0.55rem 2.5rem; font-size: 0.85rem;
-    transition: border-color var(--cems-transition);
+.vr-pipeline { display: flex; flex-direction: column; gap: 0; }
+.vr-step {
+    display: flex; align-items: flex-start; gap: 1rem;
+    background: var(--cems-card); border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius); padding: 1rem 1.25rem;
+    transition: box-shadow var(--cems-transition);
 }
-.vr-search input:focus { border-color: var(--cems-primary); outline: none; box-shadow: 0 0 0 3px rgba(107,29,42,0.08); }
-.vr-search .search-icon {
-    position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%);
-    color: var(--cems-text-secondary); font-size: 0.85rem;
+.vr-step.done { border-color: var(--cems-success); background: var(--cems-success-bg); }
+.vr-step.current { border-color: var(--cems-primary); box-shadow: 0 0 0 3px rgba(107,29,42,0.07); }
+.vr-step.pending { opacity: 0.6; }
+.vr-step-icon {
+    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; background: #F3F4F6; color: var(--cems-text-secondary);
 }
-.vr-filter-btn {
-    display: flex; align-items: center; gap: 0.35rem; padding: 0.55rem 1rem;
-    border: 1px solid var(--cems-border); border-radius: var(--cems-radius-sm);
-    background: var(--cems-card); font-size: 0.85rem; color: var(--cems-text);
-    cursor: pointer; transition: all var(--cems-transition); font-weight: 500;
+.vr-step.done .vr-step-icon { background: var(--cems-success); color: #fff; }
+.vr-step.current .vr-step-icon { background: var(--cems-primary); color: #fff; }
+.vr-step-body { flex: 1; min-width: 0; }
+.vr-step-label { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.2rem; }
+.vr-step-detail { font-size: 0.82rem; color: var(--cems-text-secondary); }
+.vr-step.done .vr-step-detail { color: var(--cems-success); }
+.vr-step.current .vr-step-label { color: var(--cems-primary); }
+.vr-step-check { color: var(--cems-success); font-size: 1.1rem; flex-shrink: 0; align-self: center; }
+.vr-step-connector {
+    width: 2px; height: 1.2rem; background: var(--cems-border);
+    margin-left: calc(1.25rem + 19px);
 }
-.vr-filter-btn:hover { background: #F3F4F6; }
+.vr-step-connector.done { background: var(--cems-success); }
 .finalized-badge {
     background: var(--cems-success-bg); color: var(--cems-success);
     padding: 0.25rem 0.6rem; border-radius: 1rem; font-size: 0.7rem; font-weight: 600;

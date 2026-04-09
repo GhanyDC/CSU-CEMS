@@ -401,6 +401,88 @@
     </div>
 </div>
 
+<!-- Add / Edit Position (EB Head only) -->
+<div class="modal fade" id="addEditPositionModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-list-check" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0" id="position-modal-title">Add Position</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="position-edit-id">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Position Title</label>
+                    <input type="text" class="form-control" id="position-title" placeholder="e.g. President">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Category</label>
+                    <select class="form-select" id="position-category">
+                        <option value="executive">Executive</option>
+                        <option value="senate">Senate</option>
+                        <option value="house_college">House – College Representative</option>
+                        <option value="house_party">House – Party-List Representative</option>
+                        <option value="college_executive">College Executive</option>
+                        <option value="college_board">College Board Member</option>
+                    </select>
+                </div>
+                <div class="row g-2 mb-0">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">Max Selections</label>
+                        <input type="number" class="form-control" id="position-max-sel" value="1" min="1" max="50">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">Display Order</label>
+                        <input type="number" class="form-control" id="position-order" value="0" min="0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitPositionForm()">
+                    <i class="bi bi-check-lg me-1"></i><span id="position-submit-label">Add Position</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Voter Roll CSV (in-election, not registrar batch) -->
+<div class="modal fade" id="importVoterRollModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-filetype-csv" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Import Verification CSV</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert mb-3 py-2 px-3" style="background:var(--cems-info-bg,#EFF6FF);border:1px solid #BFDBFE;border-radius:var(--cems-radius-sm);font-size:0.82rem;color:#1D4ED8">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Required column: <code>student_id</code>. Optional: <code>full_name, college, course, year</code>
+                </div>
+                <div class="upload-zone" id="vr-upload-zone">
+                    <input type="file" id="vr-csv-input" accept=".csv">
+                    <i class="bi bi-file-earmark-spreadsheet upload-zone-icon"></i>
+                    <div class="upload-zone-text" id="vr-upload-text">Click to choose CSV file</div>
+                    <div class="upload-zone-hint">Max 50,000 rows · UTF-8 encoded</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitVoterRollCSV()">
+                    <i class="bi bi-upload me-1"></i>Import
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add / Edit College -->
 <div class="modal fade" id="addCollegeModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -888,6 +970,7 @@ function renderPositions() {
                 <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}</div>
             </div>
             ${canManagePositions ? `<div class="position-actions">
+                <button class="icon-btn" onclick="event.stopPropagation();showEditPositionModal(${JSON.stringify(pos)})" title="Edit position"><i class="bi bi-pencil"></i></button>
                 <button class="icon-btn danger" onclick="event.stopPropagation();confirmDeletePosition('${pos.id}','${esc(pos.title)}')" title="Delete position"><i class="bi bi-trash3"></i></button>
             </div>` : ''}
         </div>`;
@@ -950,8 +1033,54 @@ function renderPositions() {
     document.getElementById('tab-positions').innerHTML = html;
 }
 
+let editPositionId = null;
+
 function showAddPositionModal() {
-    CEMS.showToast('Position management coming soon.', 'info');
+    editPositionId = null;
+    document.getElementById('position-edit-id').value = '';
+    document.getElementById('position-title').value = '';
+    document.getElementById('position-category').value = 'executive';
+    document.getElementById('position-max-sel').value = '1';
+    document.getElementById('position-order').value = '0';
+    document.getElementById('position-modal-title').textContent = 'Add Position';
+    document.getElementById('position-submit-label').textContent = 'Add Position';
+    new bootstrap.Modal(document.getElementById('addEditPositionModal')).show();
+}
+
+function showEditPositionModal(pos) {
+    editPositionId = pos.id;
+    document.getElementById('position-edit-id').value = pos.id;
+    document.getElementById('position-title').value = pos.title;
+    document.getElementById('position-category').value = pos.category;
+    document.getElementById('position-max-sel').value = pos.max_selections;
+    document.getElementById('position-order').value = pos.order;
+    document.getElementById('position-modal-title').textContent = 'Edit Position';
+    document.getElementById('position-submit-label').textContent = 'Save Changes';
+    new bootstrap.Modal(document.getElementById('addEditPositionModal')).show();
+}
+
+async function submitPositionForm() {
+    const el = currentElectionDetail;
+    const title = document.getElementById('position-title').value.trim();
+    const category = document.getElementById('position-category').value;
+    const maxSel = parseInt(document.getElementById('position-max-sel').value, 10) || 1;
+    const order = parseInt(document.getElementById('position-order').value, 10) || 0;
+    if (!title) { CEMS.showToast('Position title is required.', 'warning'); return; }
+    const body = { title, category, max_selections: maxSel, order };
+    try {
+        let res;
+        if (editPositionId) {
+            res = await apiPost(`/api/admin/elections/setup/${el.id}/positions/${editPositionId}/update/`, body);
+        } else {
+            res = await apiPost(`/api/admin/elections/setup/${el.id}/positions/create/`, body);
+        }
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('addEditPositionModal')).hide();
+            await openElection(el.id);
+            switchTab('positions');
+        } else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
 function confirmDeletePosition(posId, posTitle) {
@@ -967,79 +1096,132 @@ function confirmDeletePosition(posId, posTitle) {
 // ── Voter Roll Tab ───────────────────────────────────────────────────────
 async function renderVoterRoll() {
     const el = currentElectionDetail;
-    const canEdit = !adminUser.is_read_only && !el.voter_roll_finalized && el.status === 'draft';
+    const isDraft = el.status === 'draft';
+    const canEdit = !adminUser.is_read_only && !el.voter_roll_finalized && isDraft;
+    const canFinalize = adminUser.is_eb_head && !el.voter_roll_finalized && isDraft;
 
     try {
         const res = await CEMS.api(`/api/admin/elections/setup/${el.id}/voter-roll/summary/`);
         if (!res.success) { document.getElementById('tab-voterroll').innerHTML = '<div class="text-danger">Failed to load voter roll.</div>'; return; }
 
-        let html = '';
-
-        // Search & filter bar
-        html += `<div class="vr-filter-bar">
-            <div class="vr-search"><i class="bi bi-search search-icon"></i><input type="text" placeholder="Search voter by ID or name..." id="vr-search-input"></div>
-            <button class="vr-filter-btn"><i class="bi bi-funnel"></i> Filter</button>
-        </div>`;
-
-        // Metrics
         const ms = res.match_summary || {};
         const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '—';
+        let html = '';
+
+        // ── Finalized banner ──────────────────────────────────────────────
+        if (res.finalized) {
+            html += `<div class="vr-finalized-banner mb-4"><i class="bi bi-shield-check-fill"></i> Voter roll finalized by <strong>${esc(res.finalized_by||'')}</strong> on ${fmtDateTime(res.finalized_at)}</div>`;
+        }
+
+        // ── Setup Pipeline ────────────────────────────────────────────────
+        if (isDraft && !res.finalized) {
+            const batchOk = !!el.registrar_batch_name;
+            const importOk = (ms.total || 0) > 0;
+            const genOk = (res.approved_count || 0) > 0;
+
+            const stepState = (ok, idx, current) => {
+                if (ok) return 'done';
+                if (idx === current) return 'current';
+                return 'pending';
+            };
+            // Which step is the active one?
+            let currentStep = !batchOk ? 1 : !importOk ? 2 : !genOk ? 3 : 4;
+
+            const steps = [
+                { n: 1, label: 'Link Registrar Batch', icon: 'bi-database',
+                  detail: batchOk ? `Linked: <strong>${esc(el.registrar_batch_name)}</strong>` : 'No batch linked yet',
+                  action: canEdit ? `<button class="btn btn-cems-outline btn-sm" onclick="showAssignBatchModal()"><i class="bi bi-link-45deg me-1"></i>${batchOk ? 'Change Batch' : 'Select Batch'}</button>` : '',
+                  ok: batchOk },
+                { n: 2, label: 'Import Verification Records', icon: 'bi-file-earmark-arrow-up',
+                  detail: importOk ? `<strong>${(ms.total||0).toLocaleString()}</strong> records imported (<span style="color:var(--cems-success)">${(ms.matched||0).toLocaleString()} matched</span>, <span style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()} unmatched</span>)` : 'No verification records yet',
+                  action: canEdit ? `<button class="btn btn-cems-outline btn-sm" onclick="showImportVoterRollModal()"><i class="bi bi-upload me-1"></i>${importOk ? 'Re-import CSV' : 'Import CSV'}</button>` : '',
+                  ok: importOk },
+                { n: 3, label: 'Generate Voter Roll', icon: 'bi-people-fill',
+                  detail: genOk ? `<strong>${(res.approved_count||0).toLocaleString()}</strong> eligible voters across ${Object.keys(res.approved_by_college||{}).length} college(s)` : 'Voter roll not yet generated',
+                  action: canEdit && importOk ? `<button class="btn btn-cems-outline btn-sm" onclick="generateVoterRoll()"><i class="bi bi-gear me-1"></i>Generate</button>` : '',
+                  ok: genOk },
+                { n: 4, label: 'Finalize Voter Roll', icon: 'bi-lock-fill',
+                  detail: 'Lock the voter roll — required before starting the election',
+                  action: canFinalize && genOk ? `<button class="btn btn-cems-primary btn-sm" onclick="finalizeVoterRoll()"><i class="bi bi-lock me-1"></i>Finalize Now</button>` : '',
+                  ok: false },
+            ];
+
+            html += `<div class="vr-pipeline mb-4">`;
+            steps.forEach((s, i) => {
+                const state = s.ok ? 'done' : (s.n === currentStep ? 'current' : 'pending');
+                html += `<div class="vr-step ${state}">
+                    <div class="vr-step-icon"><i class="bi ${s.icon}"></i></div>
+                    <div class="vr-step-body">
+                        <div class="vr-step-label">${s.label}</div>
+                        <div class="vr-step-detail">${s.detail}</div>
+                        ${s.action ? `<div class="mt-2">${s.action}</div>` : ''}
+                    </div>
+                    ${state === 'done' ? '<i class="bi bi-check-circle-fill vr-step-check"></i>' : ''}
+                </div>`;
+                if (i < steps.length - 1) html += `<div class="vr-step-connector ${s.ok ? 'done' : ''}"></div>`;
+            });
+            html += `</div>`;
+        }
+
+        // ── Metrics row ───────────────────────────────────────────────────
         html += `<div class="row g-3 mb-4">
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Total Imported</div><div class="metric-value text-primary">${(ms.total||0).toLocaleString()}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Total Imported</div><div class="metric-value" style="color:var(--cems-primary)">${(ms.total||0).toLocaleString()}</div></div></div>
             <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Matched</div><div class="metric-value">${(ms.matched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.matched,ms.total)}</div></div></div>
             <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Unmatched</div><div class="metric-value" style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.unmatched,ms.total)}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved</div><div class="metric-value text-success">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">${pct(res.approved_count,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved</div><div class="metric-value" style="color:var(--cems-success)">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">${pct(res.approved_count,ms.total)}</div></div></div>
         </div>`;
 
-        // Actions
-        if (canEdit) {
-            html += `<div class="d-flex gap-2 mb-4 flex-wrap">
-                ${el.registrar_batch_name ? `<span class="badge bg-light text-dark border" style="font-size:0.8rem;padding:0.4rem 0.75rem"><i class="bi bi-database"></i> Batch: ${esc(el.registrar_batch_name)}</span>` : ''}
-                <button class="btn btn-cems-outline btn-sm" onclick="showAssignBatchModal()"><i class="bi bi-database"></i> ${el.registrar_batch_name ? 'Change' : 'Select'} Registrar Batch</button>
-                <button class="btn btn-cems-outline btn-sm" onclick="uploadCSV()"><i class="bi bi-upload"></i> Import CSV</button>
-                <button class="btn btn-cems-outline btn-sm" onclick="generateVoterRoll()"><i class="bi bi-gear"></i> Generate Voter Roll</button>
-                ${adminUser.is_eb_head && (res.approved_count||0)>0 ? `<button class="btn btn-cems-primary btn-sm" onclick="finalizeVoterRoll()"><i class="bi bi-lock"></i> Finalize</button>` : ''}
-            </div>`;
-        }
-
-        if (res.finalized) {
-            html += `<div class="alert mb-4" style="background:var(--cems-success-bg);border:1px solid var(--cems-success);color:var(--cems-success);border-radius:var(--cems-radius-sm)"><i class="bi bi-check-circle-fill"></i> Voter roll finalized by ${esc(res.finalized_by||'')} on ${fmtDateTime(res.finalized_at)}</div>`;
-        }
-
-        // College breakdown with details table
+        // ── College breakdown ──────────────────────────────────────────────
         const colleges = res.approved_by_college || {};
         if (Object.keys(colleges).length) {
             const totalApproved = Object.values(colleges).reduce((s,v) => s+v, 0);
-            html += `<div class="cems-card p-4 mb-3">
-                <h5 class="mb-1">Voter Roll Details</h5>
-                <p class="text-muted mb-3" style="font-size:0.85rem">Complete list of eligible voters by college</p>
+            html += `<div class="cems-card p-4 mb-4">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h5 class="mb-0">Eligible Voters by College</h5>
+                    <span class="badge-status" style="background:var(--cems-success-bg);color:var(--cems-success);font-size:0.75rem;padding:0.3rem 0.7rem;border-radius:1rem">${totalApproved.toLocaleString()} total</span>
+                </div>
                 <table class="cems-table">
-                    <thead><tr><th>College</th><th>Approved</th><th>Match Rate</th><th>Status</th></tr></thead>
+                    <thead><tr><th>College</th><th>Approved Voters</th><th>Share</th><th>Status</th></tr></thead>
                     <tbody>`;
-            Object.entries(colleges).sort((a,b) => a[0].localeCompare(b[0])).forEach(([col,cnt]) => {
-                const matchRate = totalApproved > 0 ? ((cnt / totalApproved) * 100 * (ms.matched / (ms.total||1))).toFixed(1) : '0';
+            Object.entries(colleges).sort((a,b) => b[1]-a[1]).forEach(([col,cnt]) => {
+                const share = totalApproved > 0 ? (cnt/totalApproved*100).toFixed(1)+'%' : '—';
                 html += `<tr>
                     <td>${esc(col)}</td>
-                    <td><strong style="color:var(--cems-info)">${cnt.toLocaleString()}</strong></td>
-                    <td>${pct(ms.matched, ms.total)}</td>
-                    <td>${res.finalized ? '<span class="finalized-badge"><i class="bi bi-check-circle"></i> Finalized</span>' : '<span class="badge-status badge-draft" style="font-size:0.7rem">Pending</span>'}</td>
+                    <td><strong>${cnt.toLocaleString()}</strong></td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:0.5rem">
+                            <div style="flex:1;height:6px;background:#F3F4F6;border-radius:3px">
+                                <div style="width:${share};height:100%;background:var(--cems-primary);border-radius:3px"></div>
+                            </div>
+                            <span style="font-size:0.78rem;color:var(--cems-text-secondary)">${share}</span>
+                        </div>
+                    </td>
+                    <td>${res.finalized ? '<span class="finalized-badge"><i class="bi bi-check-circle"></i> Finalized</span>' : '<span style="font-size:0.72rem;color:var(--cems-text-secondary)">Pending</span>'}</td>
                 </tr>`;
             });
             html += '</tbody></table></div>';
         }
 
-        // Unmatched records
+        // ── Unmatched records ──────────────────────────────────────────────
         if (res.unmatched_records?.length) {
-            html += `<div class="cems-card p-4"><h5 class="mb-3">Unmatched Records <span class="badge bg-warning text-dark">${res.unmatched_total}</span></h5>
-                <table class="cems-table"><thead><tr><th>Student ID</th><th>Name</th><th>College</th></tr></thead><tbody>`;
+            html += `<div class="cems-card p-4">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h5 class="mb-0">Unmatched Records</h5>
+                    <span class="badge bg-warning text-dark">${res.unmatched_total}</span>
+                </div>
+                <p class="text-muted mb-3" style="font-size:0.83rem">These student IDs were in the verification CSV but do not match any registered student.</p>
+                <table class="cems-table"><thead><tr><th>Student ID</th><th>Name (from CSV)</th><th>College (from CSV)</th></tr></thead><tbody>`;
             for (const r of res.unmatched_records) {
-                html += `<tr><td>${esc(r.student_id_input)}</td><td>${esc(r.full_name_input)}</td><td>${esc(r.college_input)}</td></tr>`;
+                html += `<tr><td><code>${esc(r.student_id_input)}</code></td><td>${esc(r.full_name_input)}</td><td>${esc(r.college_input)}</td></tr>`;
             }
             html += '</tbody></table>';
             if (res.unmatched_total > res.unmatched_records.length)
-                html += `<small class="text-muted">Showing ${res.unmatched_records.length} of ${res.unmatched_total}</small>`;
+                html += `<p class="text-muted mt-2 mb-0" style="font-size:0.8rem">Showing ${res.unmatched_records.length} of ${res.unmatched_total} unmatched records.</p>`;
             html += '</div>';
+        } else if ((ms.total||0) === 0) {
+            html += `<div class="empty-state mt-2"><i class="bi bi-people"></i><p>No verification records imported yet.<br><small class="text-muted">Use the pipeline above to get started.</small></p></div>`;
         }
+
         document.getElementById('tab-voterroll').innerHTML = html;
     } catch (err) {
         document.getElementById('tab-voterroll').innerHTML = '<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>Error loading voter roll</p></div>';
@@ -1312,25 +1494,30 @@ function confirmDeleteCandidate(id, name) {
 }
 
 // ── Voter Roll Actions ───────────────────────────────────────────────────
-function uploadCSV() {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = '.csv';
-    input.onchange = async () => {
-        if (!input.files[0]) return;
-        const fd = new FormData();
-        fd.append('csv_file', input.files[0]);
-        try {
-            const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/voter-roll/import/`, {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
-                body: fd
-            });
-            const res = await response.json();
-            if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
-            else CEMS.showToast(res.error, 'danger');
-        } catch (err) { CEMS.showToast(err.message, 'danger'); }
-    };
-    input.click();
+function showImportVoterRollModal() {
+    document.getElementById('vr-csv-input').value = '';
+    document.getElementById('vr-upload-text').textContent = 'Click to choose CSV file';
+    new bootstrap.Modal(document.getElementById('importVoterRollModal')).show();
+}
+document.getElementById('vr-csv-input')?.addEventListener('change', function() {
+    const f = this.files[0];
+    document.getElementById('vr-upload-text').textContent = f ? f.name : 'Click to choose CSV file';
+});
+async function submitVoterRollCSV() {
+    const file = document.getElementById('vr-csv-input').files[0];
+    if (!file) { CEMS.showToast('Select a CSV file first.', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('csv_file', file);
+    try {
+        const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/voter-roll/import/`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: fd
+        });
+        const res = await response.json();
+        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('importVoterRollModal')).hide(); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
+        else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
 async function generateVoterRoll() {

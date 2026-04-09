@@ -418,3 +418,125 @@ class ReadinessService:
             "ready": ready,
             "blocking_issues": blocking,
         }
+
+
+# ---------------------------------------------------------------------------
+# Position Management Service (EB Head only)
+# ---------------------------------------------------------------------------
+
+class PositionManagementService:
+    """
+    Add, update, and delete positions within a draft election.
+
+    All modifications are blocked once the election leaves DRAFT status.
+    Only the Electoral Board Head may invoke these methods.
+    """
+
+    _VALID_CATEGORIES = {c.value for c in Position.Category}
+
+    @staticmethod
+    def _require_draft(election: Election) -> None:
+        if election.status != Election.Status.DRAFT:
+            raise ElectionSetupError(
+                "Positions can only be modified while the election is in Draft status."
+            )
+
+    @staticmethod
+    @transaction.atomic
+    def add_position(
+        election: Election,
+        title: str,
+        category: str,
+        max_selections: int = 1,
+        order: int = 0,
+    ) -> "Position":
+        """Create a new position for the election. Election must be in DRAFT."""
+        PositionManagementService._require_draft(election)
+
+        title = (title or "").strip()
+        if not title:
+            raise ElectionSetupError("Position title is required.")
+
+        if category not in PositionManagementService._VALID_CATEGORIES:
+            raise ElectionSetupError(f"Invalid category '{category}'.")
+
+        if not isinstance(max_selections, int) or max_selections < 1:
+            raise ElectionSetupError("max_selections must be a positive integer.")
+
+        if Position.objects.filter(election=election, title=title).exists():
+            raise ElectionSetupError(
+                f"A position titled '{title}' already exists in this election."
+            )
+
+        position = Position.objects.create(
+            election=election,
+            title=title,
+            category=category,
+            max_selections=max_selections,
+            order=order,
+        )
+        logger.info(
+            "Position added: '%s' (%s) in election %s",
+            position.title, position.pk, election.name,
+        )
+        return position
+
+    @staticmethod
+    @transaction.atomic
+    def update_position(
+        position: "Position",
+        title: str | None = None,
+        category: str | None = None,
+        max_selections: int | None = None,
+        order: int | None = None,
+    ) -> "Position":
+        """Update a position's fields. Election must be in DRAFT."""
+        PositionManagementService._require_draft(position.election)
+
+        update_fields: list[str] = []
+
+        if title is not None:
+            title = title.strip()
+            if not title:
+                raise ElectionSetupError("Position title cannot be empty.")
+            if (
+                Position.objects.filter(election=position.election, title=title)
+                .exclude(pk=position.pk)
+                .exists()
+            ):
+                raise ElectionSetupError(
+                    f"A position titled '{title}' already exists in this election."
+                )
+            position.title = title
+            update_fields.append("title")
+
+        if category is not None:
+            if category not in PositionManagementService._VALID_CATEGORIES:
+                raise ElectionSetupError(f"Invalid category '{category}'.")
+            position.category = category
+            update_fields.append("category")
+
+        if max_selections is not None:
+            if not isinstance(max_selections, int) or max_selections < 1:
+                raise ElectionSetupError("max_selections must be a positive integer.")
+            position.max_selections = max_selections
+            update_fields.append("max_selections")
+
+        if order is not None:
+            position.order = order
+            update_fields.append("order")
+
+        if update_fields:
+            position.save(update_fields=update_fields)
+            logger.info("Position updated: '%s' (%s)", position.title, position.pk)
+        return position
+
+    @staticmethod
+    @transaction.atomic
+    def delete_position(position: "Position") -> None:
+        """Hard-delete a position and its candidates. Election must be in DRAFT."""
+        PositionManagementService._require_draft(position.election)
+        name = position.title
+        pk = position.pk
+        position.delete()
+        logger.info("Position deleted: '%s' (%s)", name, pk)

@@ -20,6 +20,11 @@ urlpatterns = [
     path("<uuid:election_id>/delete/", admin_views.delete_election, name="delete"),
     path("<uuid:election_id>/banner/", admin_views.upload_election_banner, name="upload-banner"),
 
+    # Position management (EB Head only)
+    path("<uuid:election_id>/positions/create/", admin_views.create_position, name="position-create"),
+    path("<uuid:election_id>/positions/<uuid:position_id>/update/", admin_views.update_position, name="position-update"),
+    path("<uuid:election_id>/positions/<uuid:position_id>/delete/", admin_views.delete_position, name="position-delete"),
+
     # Candidate management
     path("<uuid:election_id>/candidates/add/", admin_views.add_candidate, name="add-candidate"),
     path(

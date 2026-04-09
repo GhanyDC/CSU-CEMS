@@ -31,6 +31,7 @@ from apps.elections.setup_services import (
     CandidateManagementService,
     ElectionSetupError,
     ElectionSetupService,
+    PositionManagementService,
     ReadinessService,
 )
 
@@ -472,6 +473,165 @@ def upload_election_banner(request, election_id):
         "message": "Banner uploaded.",
         "banner_url": election.banner.url,
         "election": _serialize_election_summary(election),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Position management (EB Head only)
+# ---------------------------------------------------------------------------
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
+def create_position(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/positions/create/
+    Body: {"title": "...", "category": "...", "max_selections": 1, "order": 0}
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    try:
+        max_sel = int(data.get("max_selections", 1))
+        order = int(data.get("order", 0))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"success": False, "error": "max_selections and order must be integers."},
+            status=400,
+        )
+
+    try:
+        position = PositionManagementService.add_position(
+            election=election,
+            title=data.get("title", ""),
+            category=data.get("category", ""),
+            max_selections=max_sel,
+            order=order,
+        )
+    except ElectionSetupError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Position '{position.title}' created.",
+        "position": {
+            "id": str(position.pk),
+            "title": position.title,
+            "category": position.category,
+            "category_display": position.get_category_display(),
+            "max_selections": position.max_selections,
+            "order": position.order,
+        },
+    }, status=201)
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
+def update_position(request, election_id, position_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/positions/<position_id>/update/
+    Body: {"title": "...", "category": "...", "max_selections": 1, "order": 0}
+    All fields optional.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    try:
+        position = Position.objects.get(pk=position_id, election=election)
+    except (Position.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse(
+            {"success": False, "error": "Position not found in this election."},
+            status=404,
+        )
+
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    max_sel = data.get("max_selections")
+    order = data.get("order")
+    if max_sel is not None:
+        try:
+            max_sel = int(max_sel)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {"success": False, "error": "max_selections must be an integer."},
+                status=400,
+            )
+    if order is not None:
+        try:
+            order = int(order)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {"success": False, "error": "order must be an integer."},
+                status=400,
+            )
+
+    try:
+        position = PositionManagementService.update_position(
+            position=position,
+            title=data.get("title"),
+            category=data.get("category"),
+            max_selections=max_sel,
+            order=order,
+        )
+    except ElectionSetupError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Position '{position.title}' updated.",
+        "position": {
+            "id": str(position.pk),
+            "title": position.title,
+            "category": position.category,
+            "category_display": position.get_category_display(),
+            "max_selections": position.max_selections,
+            "order": position.order,
+        },
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
+def delete_position(request, election_id, position_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/positions/<position_id>/delete/
+
+    Hard-deletes the position and all its candidates. Election must be in DRAFT.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    try:
+        position = Position.objects.get(pk=position_id, election=election)
+    except (Position.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse(
+            {"success": False, "error": "Position not found in this election."},
+            status=404,
+        )
+
+    title = position.title
+    try:
+        PositionManagementService.delete_position(position)
+    except ElectionSetupError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Position '{title}' deleted.",
     })
 
 
