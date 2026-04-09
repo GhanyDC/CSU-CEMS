@@ -107,6 +107,12 @@ def _get_election_or_404(election_id):
 
 def _serialize_election_summary(election):
     """Return a compact election dict for list views."""
+    banner_url = None
+    if election.banner:
+        try:
+            banner_url = election.banner.url
+        except Exception:
+            banner_url = None
     return {
         "id": str(election.pk),
         "name": election.name,
@@ -119,6 +125,7 @@ def _serialize_election_summary(election):
         "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
         "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
         "created_at": election.created_at.isoformat(),
+        "banner_url": banner_url,
     }
 
 
@@ -225,6 +232,34 @@ def election_detail(request, election_id):
 
 
 # ---------------------------------------------------------------------------
+# Election creation helpers
+# ---------------------------------------------------------------------------
+
+def _save_election_banner(election, banner_file):
+    """Validate and save a banner image. Returns an error string on failure, None on success."""
+    max_size = 5 * 1024 * 1024
+    if banner_file.size > max_size:
+        return "Banner too large. Maximum size is 5 MB."
+    try:
+        banner_file.seek(0)
+        img = Image.open(banner_file)
+        img.verify()
+        banner_file.seek(0)
+    except Exception:
+        return "Invalid image file. Upload a valid JPEG, PNG, or WebP image."
+    allowed_formats = {"JPEG", "PNG", "WEBP"}
+    img_format = Image.open(banner_file).format
+    banner_file.seek(0)
+    if img_format not in allowed_formats:
+        return f"Invalid image format '{img_format}'. Allowed: JPEG, PNG, WebP."
+    if election.banner:
+        election.banner.delete(save=False)
+    election.banner = banner_file
+    election.save(update_fields=["banner", "updated_at"])
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Election creation
 # ---------------------------------------------------------------------------
 
@@ -235,17 +270,25 @@ def election_detail(request, election_id):
 def create_campus_election(request):
     """
     POST /api/admin/elections/setup/create-campus/
-    Body: {"name": "...", "start_time": "ISO", "end_time": "ISO"}
+    Accepts multipart/form-data (name, start_time, end_time, optional banner file)
+    or JSON body for backward compatibility.
 
     Creates a campus election with template positions.
     """
-    data, err = _parse_json_body(request)
-    if err:
-        return err
-
-    name = data.get("name", "")
-    start_time_str = data.get("start_time", "")
-    end_time_str = data.get("end_time", "")
+    content_type = request.content_type or ""
+    if "application/json" in content_type:
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        name = data.get("name", "")
+        start_time_str = data.get("start_time", "")
+        end_time_str = data.get("end_time", "")
+        banner = None
+    else:
+        name = request.POST.get("name", "")
+        start_time_str = request.POST.get("start_time", "")
+        end_time_str = request.POST.get("end_time", "")
+        banner = request.FILES.get("banner") or None
 
     if not name or not start_time_str or not end_time_str:
         return JsonResponse(
@@ -270,6 +313,11 @@ def create_campus_election(request):
     except ElectionSetupError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
 
+    if banner and banner.size > 0:
+        err_msg = _save_election_banner(election, banner)
+        if err_msg:
+            logger.warning("Banner upload failed for election %s: %s", election.pk, err_msg)
+
     return JsonResponse({
         "success": True,
         "message": f"Campus election '{election.name}' created with {election.positions.count()} positions.",
@@ -284,18 +332,27 @@ def create_campus_election(request):
 def create_college_elections(request):
     """
     POST /api/admin/elections/setup/create-college/
-    Body: {"name_prefix": "...", "start_time": "ISO", "end_time": "ISO", "colleges": [...] (optional)}
+    Accepts multipart/form-data (name_prefix, start_time, end_time, optional banner file)
+    or JSON body for backward compatibility.
 
     Bulk-creates college elections for specified or all 9 colleges.
     """
-    data, err = _parse_json_body(request)
-    if err:
-        return err
-
-    name_prefix = data.get("name_prefix", "")
-    start_time_str = data.get("start_time", "")
-    end_time_str = data.get("end_time", "")
-    colleges = data.get("colleges", None)
+    content_type = request.content_type or ""
+    if "application/json" in content_type:
+        data, err = _parse_json_body(request)
+        if err:
+            return err
+        name_prefix = data.get("name_prefix", "")
+        start_time_str = data.get("start_time", "")
+        end_time_str = data.get("end_time", "")
+        colleges = data.get("colleges", None)
+        banner = None
+    else:
+        name_prefix = request.POST.get("name_prefix", "")
+        start_time_str = request.POST.get("start_time", "")
+        end_time_str = request.POST.get("end_time", "")
+        colleges = None
+        banner = request.FILES.get("banner") or None
 
     if not name_prefix or not start_time_str or not end_time_str:
         return JsonResponse(
@@ -322,11 +379,91 @@ def create_college_elections(request):
     except ElectionSetupError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
 
+    # Apply banner to each created election if provided
+    if banner and banner.size > 0:
+        for election in elections:
+            banner.seek(0)
+            err_msg = _save_election_banner(election, banner)
+            if err_msg:
+                logger.warning("Banner upload failed for election %s: %s", election.pk, err_msg)
+                break
+
     return JsonResponse({
         "success": True,
         "message": f"Created {len(elections)} college election(s).",
         "elections": [_serialize_election_summary(e) for e in elections],
     }, status=201)
+
+
+# ---------------------------------------------------------------------------
+# Election management (delete, banner)
+# ---------------------------------------------------------------------------
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def delete_election(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/delete/
+
+    Permanently deletes a DRAFT election. Active, Closed, and Published
+    elections cannot be deleted.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status != Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "Only draft elections can be deleted."},
+            status=400,
+        )
+
+    election_name = election.name
+    # Remove banner file from storage before deleting the record
+    if election.banner:
+        election.banner.delete(save=False)
+    election.delete()
+
+    return JsonResponse({"success": True, "message": f"Election '{election_name}' deleted."})
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def upload_election_banner(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/banner/
+    Content-Type: multipart/form-data with 'banner' field.
+
+    Upload or replace an election's banner image. Election must be in Draft.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status != Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "Banner can only be changed while election is in Draft."},
+            status=400,
+        )
+
+    banner = request.FILES.get("banner")
+    if not banner:
+        return JsonResponse({"success": False, "error": "banner file is required."}, status=400)
+
+    err_msg = _save_election_banner(election, banner)
+    if err_msg:
+        return JsonResponse({"success": False, "error": err_msg}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": "Banner uploaded.",
+        "banner_url": election.banner.url,
+        "election": _serialize_election_summary(election),
+    })
 
 
 # ---------------------------------------------------------------------------

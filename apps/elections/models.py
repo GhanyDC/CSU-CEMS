@@ -143,6 +143,13 @@ class Election(models.Model):
         default=Status.DRAFT,
         db_index=True,
     )
+    banner = models.ImageField(
+        upload_to="election_banners/",
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"])],
+        help_text="Optional banner image (JPG, PNG, or WebP, max 5 MB).",
+    )
     voter_roll_finalized_at = models.DateTimeField(null=True, blank=True)
     voter_roll_finalized_by = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

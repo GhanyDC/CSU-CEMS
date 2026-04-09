@@ -16,6 +16,10 @@ urlpatterns = [
     path("create-campus/", admin_views.create_campus_election, name="create-campus"),
     path("create-college/", admin_views.create_college_elections, name="create-college"),
 
+    # Election management
+    path("<uuid:election_id>/delete/", admin_views.delete_election, name="delete"),
+    path("<uuid:election_id>/banner/", admin_views.upload_election_banner, name="upload-banner"),
+
     # Candidate management
     path("<uuid:election_id>/candidates/add/", admin_views.add_candidate, name="add-candidate"),
     path(

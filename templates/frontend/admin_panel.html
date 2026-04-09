@@ -18,7 +18,6 @@
         </a>
         <div class="d-flex align-items-center gap-3">
             <span class="badge-role" id="nav-admin-role"></span>
-            <span class="d-none d-md-inline" id="nav-admin-name" style="color:#fff;font-size:0.85rem"></span>
             <button class="btn btn-sm" id="nav-colleges-btn" onclick="showCollegesView()"
                 style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25);font-size:0.8rem">
                 <i class="bi bi-building"></i><span class="d-none d-sm-inline ms-1">Colleges</span>
@@ -61,7 +60,7 @@
                 <option value="campus">Campus</option><option value="college">College</option>
             </select>
         </div>
-        <div class="cems-card" id="elections-list-card"><div id="election-list-body"></div></div>
+        <div id="election-list-body"></div>
     </div>
 
     <!-- ── Election Detail View ───────────────────────────────────── -->
@@ -137,6 +136,14 @@
                 <div class="col-6"><label class="form-label fw-semibold">Start</label><input type="datetime-local" class="form-control" id="campus-start"></div>
                 <div class="col-6"><label class="form-label fw-semibold">End</label><input type="datetime-local" class="form-control" id="campus-end"></div>
             </div>
+            <div class="mb-0 mt-3">
+                <label class="form-label fw-semibold">Election Banner <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="file" class="form-control" id="campus-banner" accept="image/jpeg,image/png,image/webp">
+                <div class="mt-2 d-none" id="campus-banner-preview-wrap">
+                    <img id="campus-banner-preview" class="img-fluid rounded" style="max-height:100px;width:100%;object-fit:cover" alt="">
+                </div>
+                <small class="text-muted">Recommended 1200×500 px · JPG, PNG or WebP · max 5 MB</small>
+            </div>
         </div>
         <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateCampus()">Create Election</button></div>
     </div></div>
@@ -151,6 +158,14 @@
             <div class="row g-2">
                 <div class="col-6"><label class="form-label fw-semibold">Start</label><input type="datetime-local" class="form-control" id="college-start"></div>
                 <div class="col-6"><label class="form-label fw-semibold">End</label><input type="datetime-local" class="form-control" id="college-end"></div>
+            </div>
+            <div class="mb-0 mt-3">
+                <label class="form-label fw-semibold">Shared Banner <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="file" class="form-control" id="college-banner" accept="image/jpeg,image/png,image/webp">
+                <div class="mt-2 d-none" id="college-banner-preview-wrap">
+                    <img id="college-banner-preview" class="img-fluid rounded" style="max-height:100px;width:100%;object-fit:cover" alt="">
+                </div>
+                <small class="text-muted">Applied to all 9 elections · Recommended 1200×500 px · max 5 MB</small>
             </div>
         </div>
         <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateCollege()">Create 9 Elections</button></div>
@@ -279,7 +294,6 @@ function apiPost(url, body) { return CEMS.api(url, { method: 'POST', body: JSON.
     if (el) { try { adminUser = JSON.parse(el.textContent); } catch(e) {} }
     if (!adminUser) { window.location.href = '/election-admin/login/'; return; }
 
-    document.getElementById('nav-admin-name').textContent = adminUser.display_name;
     document.getElementById('nav-admin-role').textContent = adminUser.role_display;
 
     document.getElementById('admin-logout-btn').addEventListener('click', async () => {
@@ -343,27 +357,35 @@ function renderElectionList() {
         body.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No elections found</p></div>';
         return;
     }
-    body.innerHTML = filtered.map(e => {
-        const vrText = e.voter_roll_finalized ? 'Finalized' : 'Pending';
-        return `
-        <div class="election-card" onclick="openElection('${e.id}')">
-            <div style="flex:1;min-width:0">
-                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                    <span class="election-card-title">${esc(e.name)}</span>
-                    ${statusBadge(e.status)} ${typeBadge(e.election_type)}
-                </div>
-                <div class="election-card-stats">
-                    <div class="stat-item"><span class="stat-label">Schedule</span><span class="stat-value">${fmtDate(e.start_time)}</span></div>
-                    <div class="stat-item"><span class="stat-label">Voter Roll</span><span class="stat-value">${vrText}</span></div>
-                    <div class="stat-item"><span class="stat-label">Status</span><span class="stat-value">${cap(e.status)}</span></div>
+    const canDelete = adminUser.is_eb_head || adminUser.is_operator;
+    body.innerHTML = `<div class="election-grid">${filtered.map(e => {
+        const bannerHtml = e.banner_url
+            ? `<img class="ec-banner" src="${e.banner_url}" alt="" loading="lazy">`
+            : `<div class="ec-banner-fallback ${e.election_type === 'college' ? 'college' : ''}">
+                <i class="bi bi-${e.election_type === 'campus' ? 'building-fill' : 'mortarboard-fill'} ec-banner-icon"></i>
+               </div>`;
+        const vrIcon = e.voter_roll_finalized
+            ? `<i class="bi bi-check-circle-fill" style="color:var(--cems-success)"></i> Finalized`
+            : `<i class="bi bi-clock"></i> Pending`;
+        const deleteBtn = (canDelete && e.status === 'draft')
+            ? `<button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation();deleteElection('${e.id}','${esc(e.name).replace(/'/g,'\\\'')}')" title="Delete draft election"><i class="bi bi-trash3"></i> Delete</button>`
+            : '';
+        return `<div class="ec-card" onclick="openElection('${e.id}')">
+            ${bannerHtml}
+            <div class="ec-body">
+                <div class="ec-title">${esc(e.name)}</div>
+                <div class="d-flex gap-1 flex-wrap">${statusBadge(e.status)} ${typeBadge(e.election_type)}</div>
+                <div class="ec-meta">
+                    <span><i class="bi bi-calendar3"></i> ${fmtDate(e.start_time)}</span>
+                    <span>${vrIcon}</span>
                 </div>
             </div>
-            <div class="election-card-actions">
+            <div class="ec-footer">
                 <button class="btn btn-cems-outline btn-sm" onclick="event.stopPropagation();openElection('${e.id}')">Manage <i class="bi bi-chevron-right"></i></button>
-                <button class="kebab-btn" onclick="event.stopPropagation();" title="More options"><i class="bi bi-three-dots-vertical"></i></button>
+                ${deleteBtn}
             </div>
         </div>`;
-    }).join('');
+    }).join('')}</div>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -747,15 +769,39 @@ function showCreateCampusModal() {
     document.getElementById('campus-name').value = '';
     document.getElementById('campus-start').value = '';
     document.getElementById('campus-end').value = '';
+    document.getElementById('campus-banner').value = '';
+    document.getElementById('campus-banner-preview-wrap').classList.add('d-none');
     new bootstrap.Modal(document.getElementById('createCampusModal')).show();
 }
+document.getElementById('campus-banner')?.addEventListener('change', function() {
+    if (this.files[0]) {
+        const r = new FileReader();
+        r.onload = e => {
+            const p = document.getElementById('campus-banner-preview');
+            p.src = e.target.result;
+            document.getElementById('campus-banner-preview-wrap').classList.remove('d-none');
+        };
+        r.readAsDataURL(this.files[0]);
+    }
+});
 async function submitCreateCampus() {
-    const name = document.getElementById('campus-name').value;
+    const name = document.getElementById('campus-name').value.trim();
     const start = document.getElementById('campus-start').value;
     const end = document.getElementById('campus-end').value;
+    const bannerFile = document.getElementById('campus-banner').files[0];
     if (!name || !start || !end) { CEMS.showToast('All fields required.', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('start_time', new Date(start).toISOString());
+    fd.append('end_time', new Date(end).toISOString());
+    if (bannerFile) fd.append('banner', bannerFile);
     try {
-        const res = await apiPost('/api/admin/elections/setup/create-campus/', { name, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString() });
+        const response = await fetch('/api/admin/elections/setup/create-campus/', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: fd,
+        });
+        const res = await response.json();
         if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('createCampusModal')).hide(); await loadElectionList(); }
         else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
@@ -766,18 +812,62 @@ function showCreateCollegeModal() {
     document.getElementById('college-prefix').value = '';
     document.getElementById('college-start').value = '';
     document.getElementById('college-end').value = '';
+    document.getElementById('college-banner').value = '';
+    document.getElementById('college-banner-preview-wrap').classList.add('d-none');
     new bootstrap.Modal(document.getElementById('createCollegeModal')).show();
 }
+document.getElementById('college-banner')?.addEventListener('change', function() {
+    if (this.files[0]) {
+        const r = new FileReader();
+        r.onload = e => {
+            const p = document.getElementById('college-banner-preview');
+            p.src = e.target.result;
+            document.getElementById('college-banner-preview-wrap').classList.remove('d-none');
+        };
+        r.readAsDataURL(this.files[0]);
+    }
+});
 async function submitCreateCollege() {
-    const prefix = document.getElementById('college-prefix').value;
+    const prefix = document.getElementById('college-prefix').value.trim();
     const start = document.getElementById('college-start').value;
     const end = document.getElementById('college-end').value;
+    const bannerFile = document.getElementById('college-banner').files[0];
     if (!prefix || !start || !end) { CEMS.showToast('All fields required.', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('name_prefix', prefix);
+    fd.append('start_time', new Date(start).toISOString());
+    fd.append('end_time', new Date(end).toISOString());
+    if (bannerFile) fd.append('banner', bannerFile);
     try {
-        const res = await apiPost('/api/admin/elections/setup/create-college/', { name_prefix: prefix, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString() });
+        const response = await fetch('/api/admin/elections/setup/create-college/', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: fd,
+        });
+        const res = await response.json();
         if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('createCollegeModal')).hide(); await loadElectionList(); }
         else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Delete Election ──────────────────────────────────────────────────────
+async function deleteElection(electionId, electionName) {
+    showConfirm(
+        'Delete Draft Election',
+        `Permanently delete "<strong>${esc(electionName)}</strong>"? All positions and candidates will be removed. This cannot be undone.`,
+        async () => {
+            try {
+                const res = await apiPost(`/api/admin/elections/setup/${electionId}/delete/`, {});
+                if (res.success) {
+                    CEMS.showToast(res.message, 'success');
+                    allElections = allElections.filter(e => e.id !== electionId);
+                    renderElectionList();
+                } else {
+                    CEMS.showToast(res.error, 'danger');
+                }
+            } catch (err) { CEMS.showToast(err.message, 'danger'); }
+        }
+    );
 }
 
 // ── Add Candidate ────────────────────────────────────────────────────────
@@ -995,7 +1085,7 @@ async function assignBatch(batchId) {
 // ══════════════════════════════════════════════════════════════════════════
 function showConfirm(title, message, onConfirm) {
     document.getElementById('confirm-title').textContent = title;
-    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-message').innerHTML = message;
     const btn = document.getElementById('confirm-btn');
     const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
     btn.onclick = () => { modal.hide(); onConfirm(); };
