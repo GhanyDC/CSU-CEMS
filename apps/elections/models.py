@@ -24,6 +24,38 @@ def candidate_photo_path(instance, filename):
     return f"candidate_photos/{instance.position.election_id}/{uuid.uuid4().hex}.jpg"
 
 
+class College(models.Model):
+    """
+    An official college that can participate in elections.
+
+    Managed by admins via the admin panel. The name must match the college
+    field on Student and Election records.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True)
+    code = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Short code or abbreviation (optional).",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive colleges are hidden from election creation dropdowns.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "College"
+        verbose_name_plural = "Colleges"
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class RegistrarImportBatch(models.Model):
     """
     System-level registrar import batch representing a school-year dataset.
@@ -160,10 +192,18 @@ class Election(models.Model):
                 raise ValidationError(
                     {"college": "College is required for college elections."}
                 )
-            if self.college not in OFFICIAL_COLLEGES:
-                raise ValidationError(
-                    {"college": f"'{self.college}' is not a recognized official college."}
-                )
+            # Validate against the College table when populated; fall back to
+            # the hard-coded constant list so tests and fresh installs still work.
+            if College.objects.exists():
+                if not College.objects.filter(name=self.college, is_active=True).exists():
+                    raise ValidationError(
+                        {"college": f"'{self.college}' is not a recognized active college."}
+                    )
+            else:
+                if self.college not in OFFICIAL_COLLEGES:
+                    raise ValidationError(
+                        {"college": f"'{self.college}' is not a recognized official college."}
+                    )
         elif self.election_type == self.ElectionType.CAMPUS:
             if self.college:
                 raise ValidationError(

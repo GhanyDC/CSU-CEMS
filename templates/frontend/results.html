@@ -142,54 +142,53 @@ function renderResults(positions, totalBallots) {
             thresholdHtml = `<small class="text-muted d-block mt-1">50%+1 Threshold: <strong>${pos.threshold_50_plus_1}</strong> votes (of ${pos.threshold_denominator} eligible)</small>`;
         }
 
-        let barsHtml = '';
+        let candidatesHtml = '';
         results.forEach((cand) => {
             const pct = posTotal > 0 ? ((cand.votes / posTotal) * 100).toFixed(1) : 0;
             const isWinner = cand.votes === maxVotes && cand.votes > 0;
-            const barColor = isWinner ? 'var(--cems-success)' : 'var(--cems-primary)';
             const winBadge = isWinner ? ' <i class="bi bi-trophy-fill" style="color:var(--cems-accent)"></i>' : '';
 
             const photoHtml = cand.photo_url
-                ? `<img src="${CEMS.escapeHtml(cand.photo_url)}" alt="" class="candidate-photo" style="width:36px;height:36px;object-fit:cover;border-radius:50%;margin-right:0.5rem">`
-                : `<span class="candidate-photo-placeholder" style="width:36px;height:36px;font-size:0.75rem;margin-right:0.5rem"><i class="bi bi-person"></i></span>`;
+                ? `<img src="${CEMS.escapeHtml(cand.photo_url)}" alt="" class="candidate-photo" style="width:40px;height:40px">`
+                : `<span class="candidate-photo-placeholder" style="width:40px;height:40px;font-size:0.85rem"><i class="bi bi-person"></i></span>`;
 
-            const collegeHtml = cand.college ? `<small class="text-muted ms-1">${CEMS.escapeHtml(cand.college)}</small>` : '';
+            const partyHtml = cand.party ? `<span class="text-muted" style="font-size:0.75rem">${CEMS.escapeHtml(cand.party)}</span>` : '';
+            const collegeHtml = cand.college ? `<span class="text-muted" style="font-size:0.75rem">${CEMS.escapeHtml(cand.college)}</span>` : '';
+            const metaSep = partyHtml && collegeHtml ? ' · ' : '';
 
-            barsHtml += `
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <div class="d-flex align-items-center">
-                            ${photoHtml}
-                            <div>
-                                <strong>${CEMS.escapeHtml(cand.full_name || cand.candidate || '')}</strong>${winBadge}
-                                ${cand.party ? `<small class="text-muted ms-1">(${CEMS.escapeHtml(cand.party)})</small>` : ''}
-                                ${collegeHtml}
-                            </div>
+            candidatesHtml += `
+                <div class="result-candidate-row">
+                    ${photoHtml}
+                    <div class="result-candidate-info">
+                        <div class="name-row">
+                            <span class="name">${CEMS.escapeHtml(cand.full_name || cand.candidate || '')}${winBadge}</span>
+                            <span class="votes">${cand.votes} vote${cand.votes !== 1 ? 's' : ''} (${pct}%)</span>
                         </div>
-                        <span class="fw-bold" style="white-space:nowrap">${cand.votes} vote${cand.votes !== 1 ? 's' : ''} (${pct}%)</span>
-                    </div>
-                    <div class="results-bar" style="height:24px;background:var(--cems-bg);border-radius:var(--cems-radius-sm);overflow:hidden">
-                        <div style="width:${pct}%;height:100%;background:${barColor};border-radius:var(--cems-radius-sm);transition:width 0.8s ease;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:600;">
-                            ${pct > 8 ? pct + '%' : ''}
+                        ${partyHtml || collegeHtml ? `<div style="font-size:0.75rem;color:var(--cems-text-secondary);margin-bottom:0.3rem">${partyHtml}${metaSep}${collegeHtml}</div>` : ''}
+                        <div class="result-bar-track">
+                            <div class="result-bar-fill-new ${isWinner ? 'winner' : 'normal'}" style="width:${pct}%"></div>
                         </div>
                     </div>
                 </div>`;
         });
 
         container.innerHTML += `
-            <div class="cems-card mb-4">
-                <div class="d-flex justify-content-between align-items-start mb-3">
+            <div class="result-position-card">
+                <div class="result-position-header">
                     <div>
-                        <h5 class="mb-1">
-                            <span class="badge-status badge-draft" style="font-size:0.75rem;margin-right:0.4rem">${idx + 1}</span>
+                        <h5 class="mb-1" style="font-weight:700">
+                            <span class="badge" style="background:var(--cems-primary);border-radius:1rem;font-size:0.7rem;padding:0.2rem 0.55rem;color:#fff;margin-right:0.35rem">${idx + 1}</span>
                             ${CEMS.escapeHtml(pos.position || pos.title || '')}
                         </h5>
-                        <small class="text-muted">${categoryBadge} &mdash; ${posTotal} total votes</small>
+                        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem">
+                            ${categoryBadge}
+                            <span class="text-muted" style="font-size:0.8rem">${posTotal} total votes</span>
+                        </div>
                         ${thresholdHtml}
                     </div>
                     <div>${winnerInfo}</div>
                 </div>
-                ${barsHtml || '<p class="text-muted mb-0">No candidates or votes.</p>'}
+                ${candidatesHtml || '<p class="text-muted mb-0">No candidates or votes.</p>'}
             </div>`;
     });
 }

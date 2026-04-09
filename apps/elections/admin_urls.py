@@ -48,4 +48,10 @@ urlpatterns = [
 
     # Readiness check
     path("<uuid:election_id>/readiness/", admin_views.readiness_check, name="readiness"),
+
+    # College management
+    path("colleges/", admin_views.list_colleges, name="colleges"),
+    path("colleges/create/", admin_views.create_college, name="college-create"),
+    path("colleges/<uuid:college_id>/update/", admin_views.update_college, name="college-update"),
+    path("colleges/<uuid:college_id>/delete/", admin_views.delete_college, name="college-delete"),
 ]

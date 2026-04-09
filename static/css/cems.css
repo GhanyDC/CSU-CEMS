@@ -4,12 +4,12 @@
    ============================================================ */
 
 :root {
-    --cems-primary: #6B1D2A;
-    --cems-primary-light: #8B2E3E;
-    --cems-primary-dark: #4A1019;
-    --cems-accent: #D4A847;
-    --cems-accent-dark: #B8922E;
-    --cems-bg: #F7F8FA;
+    --cems-primary: #6B0F1A;
+    --cems-primary-light: #A11217;
+    --cems-primary-dark: #4A0B12;
+    --cems-accent: #F2A900;
+    --cems-accent-dark: #D99600;
+    --cems-bg: #F8F9FB;
     --cems-card: #FFFFFF;
     --cems-border: #E5E7EB;
     --cems-text: #1F2937;
@@ -419,9 +419,188 @@ footer {
     .login-card .card-body { padding: 1.5rem !important; }
     .election-card { flex-direction: column; align-items: flex-start; }
     .election-card-meta { flex-wrap: wrap; gap: 0.75rem; }
+    .election-card-stats { gap: 1.25rem; }
+    .election-card-actions { width: 100%; justify-content: flex-end; }
     .cems-tabs { flex-wrap: wrap; }
     .metric-card .metric-value { font-size: 1.25rem; }
+    .welcome-banner { padding: 1.5rem; }
+    .welcome-banner h3 { font-size: 1.2rem; }
+    .position-block-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .position-actions { align-self: flex-end; }
+    .vr-filter-bar { flex-direction: column; }
+    .primary-action-wrap { text-align: left; }
+    .result-candidate-row { flex-wrap: wrap; }
+    .dash-election-card { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- Election Card Stats ---------- */
+.election-card-stats {
+    display: flex;
+    gap: 2.5rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
+.election-card-stats .stat-item { display: flex; flex-direction: column; gap: 0.125rem; }
+.election-card-stats .stat-label {
+    font-size: 0.7rem; color: var(--cems-text-secondary); font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.04em;
+}
+.election-card-stats .stat-value { font-size: 0.85rem; font-weight: 600; color: var(--cems-text); }
+.election-card-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+
+/* ---------- Kebab / Dots Menu ---------- */
+.kebab-btn {
+    background: none; border: none; color: var(--cems-text-secondary);
+    font-size: 1.1rem; cursor: pointer; padding: 0.3rem 0.4rem;
+    border-radius: var(--cems-radius-sm); transition: all var(--cems-transition); line-height: 1;
+}
+.kebab-btn:hover { background: #F3F4F6; color: var(--cems-text); }
+
+/* ---------- Position Blocks (List Layout) ---------- */
+.position-block {
+    background: var(--cems-card); border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius); margin-bottom: 1rem; overflow: hidden;
+}
+.position-block-header {
+    padding: 1rem 1.25rem; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid var(--cems-border);
+}
+.position-block-header .position-name { font-weight: 700; font-size: 1rem; }
+.position-block-header .position-sub { font-size: 0.8rem; color: var(--cems-text-secondary); margin-top: 0.125rem; }
+.position-actions { display: flex; align-items: center; gap: 0.25rem; }
+.icon-btn {
+    background: none; border: 1px solid var(--cems-border); color: var(--cems-text-secondary);
+    font-size: 0.9rem; cursor: pointer; padding: 0.4rem 0.5rem; border-radius: var(--cems-radius-sm);
+    transition: all var(--cems-transition); line-height: 1;
+}
+.icon-btn:hover { background: #F3F4F6; color: var(--cems-text); }
+.icon-btn.danger:hover { background: var(--cems-danger-bg); color: var(--cems-danger); border-color: rgba(220,38,38,0.2); }
+
+.candidates-divider {
+    padding: 0.5rem 1.25rem; display: flex; align-items: center; justify-content: space-between;
+    background: #F9FAFB; font-size: 0.8rem; font-weight: 500; color: var(--cems-text-secondary);
+    border-bottom: 1px solid var(--cems-border);
+}
+.candidates-divider .candidate-count { font-weight: 700; color: var(--cems-danger); font-size: 0.9rem; }
+
+.candidate-row {
+    padding: 0.75rem 1.25rem; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #F3F4F6; transition: background var(--cems-transition);
+}
+.candidate-row:last-child { border-bottom: none; }
+.candidate-row:hover { background: #FAFBFC; }
+.candidate-row .cand-info { display: flex; flex-direction: column; }
+.candidate-row .cand-name { font-weight: 600; font-size: 0.9rem; }
+.candidate-row .cand-meta { font-size: 0.75rem; color: var(--cems-text-secondary); }
+
+.add-candidate-row {
+    padding: 0.75rem 1.25rem; display: flex; align-items: center; justify-content: center;
+    gap: 0.35rem; color: var(--cems-text-secondary); font-size: 0.85rem; font-weight: 500;
+    cursor: pointer; transition: all var(--cems-transition); border-top: 1px solid var(--cems-border);
+    background: none; border-left: none; border-right: none; border-bottom: none; width: 100%;
+}
+.add-candidate-row:hover { background: #F3F4F6; color: var(--cems-primary); }
+
+/* ---------- Voter Roll Details ---------- */
+.vr-filter-bar {
+    display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;
+}
+.vr-search {
+    flex: 1; min-width: 200px; position: relative;
+}
+.vr-search input {
+    width: 100%; border: 1px solid var(--cems-border); border-radius: var(--cems-radius-sm);
+    padding: 0.55rem 1rem 0.55rem 2.5rem; font-size: 0.85rem;
+    transition: border-color var(--cems-transition);
+}
+.vr-search input:focus { border-color: var(--cems-primary); outline: none; box-shadow: 0 0 0 3px rgba(107,29,42,0.08); }
+.vr-search .search-icon {
+    position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%);
+    color: var(--cems-text-secondary); font-size: 0.85rem;
+}
+.vr-filter-btn {
+    display: flex; align-items: center; gap: 0.35rem; padding: 0.55rem 1rem;
+    border: 1px solid var(--cems-border); border-radius: var(--cems-radius-sm);
+    background: var(--cems-card); font-size: 0.85rem; color: var(--cems-text);
+    cursor: pointer; transition: all var(--cems-transition); font-weight: 500;
+}
+.vr-filter-btn:hover { background: #F3F4F6; }
+.finalized-badge {
+    background: var(--cems-success-bg); color: var(--cems-success);
+    padding: 0.25rem 0.6rem; border-radius: 1rem; font-size: 0.7rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 0.25rem;
+}
+
+/* ---------- Primary Action with Subtext ---------- */
+.primary-action-wrap { text-align: right; }
+.primary-action-wrap .action-sub { font-size: 0.8rem; color: var(--cems-text-secondary); margin-top: 0.35rem; }
+
+/* ---------- Student Welcome Banner ---------- */
+.welcome-banner {
+    background: linear-gradient(135deg, var(--cems-primary) 0%, var(--cems-primary-light) 60%, var(--cems-primary-dark) 100%);
+    color: #fff; border-radius: var(--cems-radius); padding: 2rem 2.5rem;
+    position: relative; overflow: hidden;
+}
+.welcome-banner::after {
+    content: ''; position: absolute; top: -30%; right: -5%; width: 250px; height: 250px;
+    background: rgba(212,168,71,0.08); border-radius: 50%;
+}
+.welcome-banner h3 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+.welcome-banner p { opacity: 0.85; margin-bottom: 0; font-size: 0.95rem; }
+.welcome-banner .welcome-college { opacity: 0.7; font-size: 0.8rem; margin-top: 0.25rem; }
+
+/* ---------- Dashboard Election Card ---------- */
+.dash-election-card {
+    background: var(--cems-card); border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius); padding: 1rem 1.25rem;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; margin-bottom: 0.75rem; transition: all var(--cems-transition);
+}
+.dash-election-card:hover { box-shadow: var(--cems-shadow); border-color: #D1D5DB; }
+.dash-election-card .card-info { flex: 1; min-width: 0; }
+.dash-election-card .card-title-row {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem;
+}
+.dash-election-card .card-title { font-weight: 600; font-size: 0.95rem; }
+.dash-election-card .card-type { font-size: 0.75rem; color: var(--cems-text-secondary); }
+
+/* ---------- Info List ---------- */
+.info-list-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.75rem 0; border-bottom: 1px solid #F3F4F6;
+    font-size: 0.9rem;
+}
+.info-list-item:last-child { border-bottom: none; }
+.info-list-item .info-label { color: var(--cems-text-secondary); }
+.info-list-item .info-value { font-weight: 600; }
+
+/* ---------- Results Section ---------- */
+.result-position-card {
+    background: var(--cems-card); border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius); padding: 1.5rem; margin-bottom: 1rem;
+}
+.result-position-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem;
+}
+.result-candidate-row {
+    display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;
+}
+.result-candidate-row:last-child { margin-bottom: 0; }
+.result-candidate-info { flex: 1; min-width: 0; }
+.result-candidate-info .name-row {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;
+}
+.result-candidate-info .name-row .name { font-weight: 600; font-size: 0.9rem; }
+.result-candidate-info .name-row .votes { font-weight: 700; font-size: 0.85rem; white-space: nowrap; }
+.result-bar-track {
+    height: 8px; background: #F3F4F6; border-radius: 4px; overflow: hidden;
+}
+.result-bar-fill-new {
+    height: 100%; border-radius: 4px; transition: width 0.8s ease;
+}
+.result-bar-fill-new.winner { background: var(--cems-success); }
+.result-bar-fill-new.normal { background: var(--cems-primary); }
 
 /* ---------- Utilities ---------- */
 .gap-2 { gap: 0.5rem; }

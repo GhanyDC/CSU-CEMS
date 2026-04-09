@@ -23,10 +23,11 @@
 
 {% block content %}
 <div class="container-fluid px-3 px-md-4 py-3">
-    <!-- Welcome -->
-    <div class="cems-card p-4 mb-4" style="background:linear-gradient(135deg,var(--cems-primary),var(--cems-primary-light));color:#fff;border:none">
-        <h3 class="mb-1"><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
-        <p class="mb-0" style="opacity:0.85">Campus Election Management System — Your vote matters.</p>
+    <!-- Welcome Banner -->
+    <div class="welcome-banner mb-4">
+        <h3><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
+        <p>Campus Election Management System — Your vote matters.</p>
+        <div class="welcome-college" id="welcome-college"></div>
     </div>
 
     <!-- Metric Cards -->
@@ -83,6 +84,7 @@
 
     document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
     document.getElementById('welcome-name').textContent = user.full_name || user.student_id;
+    if (user.college) document.getElementById('welcome-college').textContent = user.college;
 
     if (user.is_admin) {
         document.getElementById('nav-admin').classList.remove('d-none');
@@ -155,39 +157,39 @@
         const listContainer = document.getElementById('elections-list');
         if (elections.length === 0) {
             listContainer.innerHTML = `
-                <div class="alert alert-info mb-0">
-                    <i class="bi bi-info-circle-fill"></i>
-                    You are not currently eligible for any active elections.
-                    If you believe this is an error, contact the Electoral Board.
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    <p>You are not currently eligible for any active elections.</p>
+                    <small class="text-muted">If you believe this is an error, contact the Electoral Board.</small>
                 </div>`;
         } else {
             let html = '';
             for (const e of elections) {
-                const typeLabel = e.election_type === 'campus' ? 'Campus' : `College (${CEMS.escapeHtml(e.college)})`;
+                const typeLabel = e.election_type === 'campus' ? 'Campus Election' : `College · ${CEMS.escapeHtml(e.college || '')}`;
                 let statusBadge, actionBtn;
 
                 if (e.status === 'active' && e.has_voted) {
-                    statusBadge = '<span class="badge-status badge-active">Voted</span>';
-                    actionBtn = `<span style="color:var(--cems-success)"><i class="bi bi-check-circle-fill"></i> Submitted</span>`;
+                    statusBadge = '<span class="badge-status badge-active"><i class="bi bi-check-lg"></i> Voted</span>';
+                    actionBtn = `<span style="color:var(--cems-success);font-size:0.85rem;font-weight:500"><i class="bi bi-check-circle-fill"></i> Submitted</span>`;
                 } else if (e.status === 'active') {
                     statusBadge = '<span class="badge-status badge-closed">Not Voted</span>';
                     actionBtn = `<a href="/ballot/?election=${e.id}" class="btn btn-cems-primary btn-sm"><i class="bi bi-pencil-square"></i> Vote Now</a>`;
                 } else if (e.status === 'published') {
                     statusBadge = '<span class="badge-status badge-published">Published</span>';
-                    actionBtn = `<a href="/results/?election=${e.id}" class="btn btn-cems-outline btn-sm"><i class="bi bi-bar-chart-fill"></i> Results</a>`;
+                    actionBtn = `<a href="/results/?election=${e.id}" class="btn btn-cems-outline btn-sm"><i class="bi bi-bar-chart-fill"></i> View Results</a>`;
                 } else {
                     statusBadge = `<span class="badge-status badge-draft">${CEMS.escapeHtml(e.status)}</span>`;
                     actionBtn = '';
                 }
 
                 html += `
-                    <div class="election-card">
-                        <div style="flex:1;min-width:0">
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <span class="election-card-title">${CEMS.escapeHtml(e.name)}</span>
+                    <div class="dash-election-card">
+                        <div class="card-info">
+                            <div class="card-title-row">
+                                <span class="card-title">${CEMS.escapeHtml(e.name)}</span>
                                 ${statusBadge}
                             </div>
-                            <div class="election-card-meta"><span>${typeLabel}</span></div>
+                            <span class="card-type">${typeLabel}</span>
                         </div>
                         <div>${actionBtn}</div>
                     </div>`;
@@ -198,14 +200,14 @@
         // Election info panel
         const infoContainer = document.getElementById('election-info');
         if (elections.length > 0) {
-            let infoHtml = '<ul class="list-group list-group-flush">';
-            infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Eligible Elections</span><strong>${elections.length}</strong></li>`;
-            infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Active</span><strong>${activeElections.length}</strong></li>`;
-            infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Published</span><strong>${publishedElections.length}</strong></li>`;
+            let infoHtml = '';
+            infoHtml += `<div class="info-list-item"><span class="info-label">Eligible Elections</span><span class="info-value">${elections.length}</span></div>`;
+            infoHtml += `<div class="info-list-item"><span class="info-label">Active</span><span class="info-value" style="color:var(--cems-success)">${activeElections.length}</span></div>`;
+            infoHtml += `<div class="info-list-item"><span class="info-label">Published</span><span class="info-value">${publishedElections.length}</span></div>`;
             if (user.college) {
-                infoHtml += `<li class="list-group-item d-flex justify-content-between"><span>Your College</span><strong>${CEMS.escapeHtml(user.college)}</strong></li>`;
+                infoHtml += `<div class="info-list-item"><span class="info-label">Your College</span><span class="info-value">${CEMS.escapeHtml(user.college)}</span></div>`;
             }
-            infoHtml += '</ul>';
+            infoHtml += `<div class="info-list-item"><span class="info-label">Student ID</span><span class="info-value">${CEMS.escapeHtml(user.student_id || '—')}</span></div>`;
             infoContainer.innerHTML = infoHtml;
         } else {
             infoContainer.innerHTML = '<p class="text-muted">No election information available.</p>';

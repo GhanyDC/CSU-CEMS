@@ -282,11 +282,7 @@
 
             <div class="hero-stats" id="hero-stats">
                 <div>
-                    <div class="hero-stat-value" id="stat-students">—</div>
-                    <div class="hero-stat-label">Registered Students</div>
-                </div>
-                <div>
-                    <div class="hero-stat-value" id="stat-colleges">9</div>
+                    <div class="hero-stat-value" id="stat-colleges">—</div>
                     <div class="hero-stat-label">Colleges</div>
                 </div>
                 <div>
@@ -314,10 +310,32 @@
                         <input type="text" class="form-control" id="student_id"
                                placeholder="Student ID" required autocomplete="username">
                     </div>
-                    <div class="form-floating-cems">
-                        <span class="input-icon"><i class="bi bi-calendar3"></i></span>
-                        <input type="date" class="form-control" id="date_of_birth"
-                               required autocomplete="bday">
+                    <!-- Birthdate — three separate selects for easy input -->
+                    <div class="mb-3" id="dob-group">
+                        <label class="form-label fw-semibold" style="font-size:0.85rem;color:var(--cems-text-secondary)">Date of Birth</label>
+                        <div class="d-flex gap-2">
+                            <select class="form-select" id="dob-month" required style="border:1.5px solid var(--cems-border);border-radius:var(--cems-radius-sm);color:var(--cems-text)">
+                                <option value="">Month</option>
+                                <option value="01">January</option>
+                                <option value="02">February</option>
+                                <option value="03">March</option>
+                                <option value="04">April</option>
+                                <option value="05">May</option>
+                                <option value="06">June</option>
+                                <option value="07">July</option>
+                                <option value="08">August</option>
+                                <option value="09">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                            <select class="form-select" id="dob-day" required style="border:1.5px solid var(--cems-border);border-radius:var(--cems-radius-sm);color:var(--cems-text)">
+                                <option value="">Day</option>
+                            </select>
+                            <select class="form-select" id="dob-year" required style="border:1.5px solid var(--cems-border);border-radius:var(--cems-radius-sm);color:var(--cems-text)">
+                                <option value="">Year</option>
+                            </select>
+                        </div>
                     </div>
                     <button type="submit" class="login-btn-main" id="login-btn">
                         <span id="login-text">Sign In</span>
@@ -356,12 +374,26 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     text.textContent = 'Signing in...';
     alertEl.classList.remove('show');
 
+    // Assemble date_of_birth from three selects
+    const month = document.getElementById('dob-month').value;
+    const day   = document.getElementById('dob-day').value;
+    const year  = document.getElementById('dob-year').value;
+    if (!month || !day || !year) {
+        alertText.textContent = 'Please select your complete date of birth.';
+        alertEl.classList.add('show');
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        text.textContent = 'Sign In';
+        return;
+    }
+    const dateOfBirth = `${year}-${month}-${day}`;
+
     try {
         const res = await CEMS.api('/api/auth/login/', {
             method: 'POST',
             body: JSON.stringify({
                 student_id: document.getElementById('student_id').value.trim(),
-                date_of_birth: document.getElementById('date_of_birth').value
+                date_of_birth: dateOfBirth
             })
         });
 
@@ -386,5 +418,53 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         text.textContent = 'Sign In';
     }
 });
+
+// Populate Day dropdown (1–31) on load and update when month/year change
+(function initDobSelects() {
+    const monthSel = document.getElementById('dob-month');
+    const daySel   = document.getElementById('dob-day');
+    const yearSel  = document.getElementById('dob-year');
+
+    // Populate years (current year down to 1950)
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear; y >= 1950; y--) {
+        const opt = document.createElement('option');
+        opt.value = String(y);
+        opt.textContent = y;
+        yearSel.appendChild(opt);
+    }
+
+    function updateDays() {
+        const m = parseInt(monthSel.value, 10) || 1;
+        const y = parseInt(yearSel.value, 10) || 2000;
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const current = daySel.value;
+        daySel.innerHTML = '<option value="">Day</option>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            const opt = document.createElement('option');
+            opt.value = String(d).padStart(2, '0');
+            opt.textContent = d;
+            if (opt.value === current) opt.selected = true;
+            daySel.appendChild(opt);
+        }
+    }
+
+    monthSel.addEventListener('change', updateDays);
+    yearSel.addEventListener('change', updateDays);
+    updateDays();
+})();
+
+// Fetch live stats for the hero panel
+(async function loadStats() {
+    try {
+        const res = await fetch('/api/stats/');
+        if (!res.ok) return;
+        const data = await res.json();
+        const colEl = document.getElementById('stat-colleges');
+        const elEl  = document.getElementById('stat-elections');
+        if (colEl) colEl.textContent = data.colleges ?? '—';
+        if (elEl)  elEl.textContent  = data.elections_held ?? '—';
+    } catch (_) { /* silently ignore network errors on the login page */ }
+})();
 </script>
 {% endblock %}

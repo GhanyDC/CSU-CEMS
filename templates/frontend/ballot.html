@@ -237,7 +237,7 @@ function handleSelection(input) {
 
 function updateSummary() {
     const summary = document.getElementById('ballot-summary');
-    let html = '<ul class="list-group list-group-flush">';
+    let html = '';
     let totalSelections = 0;
 
     positionsData.forEach(pos => {
@@ -248,16 +248,15 @@ function updateSummary() {
         });
         totalSelections += names.length;
 
-        html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-            <span>${CEMS.escapeHtml(pos.title)}</span>
+        html += `<div class="info-list-item">
+            <span class="info-label">${CEMS.escapeHtml(pos.title)}</span>
             <span>${names.length > 0
                 ? names.map(n => `<span class="badge-status badge-active">${n}</span>`).join(' ')
-                : '<span class="text-muted">No selection</span>'
+                : '<span class="text-muted" style="font-size:0.85rem">No selection</span>'
             }</span>
-        </li>`;
+        </div>`;
     });
 
-    html += '</ul>';
     summary.innerHTML = html;
 
     const submitBtn = document.getElementById('submit-ballot-btn');

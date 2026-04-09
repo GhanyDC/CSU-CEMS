@@ -8,7 +8,7 @@ from django.urls import include, path
 from apps.accounts.urls import admin_auth_urlpatterns
 from apps.elections.views import (
     close_election, election_tally_review, election_turnout,
-    publish_results, start_election,
+    publish_results, site_stats, start_election,
 )
 
 urlpatterns: list = [
@@ -30,6 +30,8 @@ urlpatterns: list = [
     path("api/admin/elections/setup/", include("apps.elections.admin_urls", namespace="admin_elections")),
     # Frontend UI
     path("", include("apps.frontend.urls", namespace="frontend")),
+    # Public stats
+    path("api/stats/", site_stats, name="site-stats"),
 ]
 
 if settings.DEBUG and "debug_toolbar" in settings.INSTALLED_APPS:

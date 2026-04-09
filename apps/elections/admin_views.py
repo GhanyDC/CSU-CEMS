@@ -20,7 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.decorators import admin_login_required, role_required
 from apps.accounts.models import AdminRole
-from apps.elections.models import Candidate, Election, Position, RegistrarImportBatch
+from apps.elections.models import Candidate, College, Election, Position, RegistrarImportBatch
 from apps.elections.services import (
     RegistrarBatchService,
     VoterRollError,
@@ -912,3 +912,105 @@ def assign_registrar_batch(request, election_id):
         "success": True,
         "message": f"Batch '{batch.name}' assigned to election.",
     })
+
+
+# ---------------------------------------------------------------------------
+# College management (EB Head / Operator only)
+# ---------------------------------------------------------------------------
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+def list_colleges(request):
+    """GET /api/admin/elections/setup/colleges/ — list all colleges."""
+    colleges = College.objects.all()
+    return JsonResponse({
+        "success": True,
+        "colleges": [
+            {
+                "id": str(c.pk),
+                "name": c.name,
+                "code": c.code,
+                "is_active": c.is_active,
+            }
+            for c in colleges
+        ],
+    })
+
+
+@csrf_protect
+@require_POST
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def create_college(request):
+    """POST /api/admin/elections/setup/colleges/create/ — add a college."""
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    name = (data.get("name") or "").strip()
+    code = (data.get("code") or "").strip()
+
+    if not name:
+        return JsonResponse({"success": False, "error": "College name is required."}, status=400)
+
+    if College.objects.filter(name__iexact=name).exists():
+        return JsonResponse({"success": False, "error": "A college with that name already exists."}, status=400)
+
+    college = College.objects.create(name=name, code=code, is_active=True)
+    return JsonResponse({
+        "success": True,
+        "college": {"id": str(college.pk), "name": college.name, "code": college.code, "is_active": college.is_active},
+    }, status=201)
+
+
+@csrf_protect
+@require_POST
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def update_college(request, college_id):
+    """POST /api/admin/elections/setup/colleges/<id>/update/"""
+    try:
+        college = College.objects.get(pk=college_id)
+    except (College.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse({"success": False, "error": "College not found."}, status=404)
+
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    name = (data.get("name") or "").strip()
+    code = (data.get("code") or "").strip()
+    is_active = data.get("is_active")
+
+    if name and name != college.name:
+        if College.objects.filter(name__iexact=name).exclude(pk=college.pk).exists():
+            return JsonResponse({"success": False, "error": "A college with that name already exists."}, status=400)
+        college.name = name
+
+    if "code" in data:
+        college.code = code
+    if is_active is not None:
+        college.is_active = bool(is_active)
+
+    college.save()
+    return JsonResponse({
+        "success": True,
+        "college": {"id": str(college.pk), "name": college.name, "code": college.code, "is_active": college.is_active},
+    })
+
+
+@csrf_protect
+@require_POST
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def delete_college(request, college_id):
+    """POST /api/admin/elections/setup/colleges/<id>/delete/"""
+    try:
+        college = College.objects.get(pk=college_id)
+    except (College.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse({"success": False, "error": "College not found."}, status=404)
+
+    college.delete()
+    return JsonResponse({"success": True, "message": "College deleted."})
+

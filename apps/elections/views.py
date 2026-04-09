@@ -17,7 +17,7 @@ from apps.accounts.decorators import (
 )
 from apps.accounts.models import AdminRole
 from apps.accounts.utils import get_client_ip
-from apps.elections.models import Candidate, Election, EligibleVoter, Position
+from apps.elections.models import Candidate, College, Election, EligibleVoter, Position
 from apps.elections.services import (
     ElectionLifecycleService,
     ElectionNotReadyError,
@@ -577,3 +577,21 @@ def _lifecycle_action(request, action_method):
         "election_id": str(election.pk),
         "status": election.status,
     })
+
+
+# ---------------------------------------------------------------------------
+# Public stats (used on the student login page)
+# ---------------------------------------------------------------------------
+
+@require_GET
+def site_stats(request):
+    """
+    GET /api/stats/ — returns public counters shown on the login page.
+    No authentication required.
+    """
+    colleges = College.objects.filter(is_active=True).count()
+    elections_held = Election.objects.filter(
+        status__in=[Election.Status.CLOSED, Election.Status.PUBLISHED]
+    ).count()
+    return JsonResponse({"colleges": colleges, "elections_held": elections_held})
+
