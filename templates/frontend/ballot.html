@@ -195,10 +195,10 @@ function renderPositions(positions) {
 
 function getCategoryBadge(cat) {
     const map = {
-        'executive': '<span class="badge bg-danger-subtle text-danger">Executive</span>',
-        'senate': '<span class="badge bg-info-subtle text-info">Senate</span>',
-        'house_college': '<span class="badge bg-success-subtle text-success">College Rep</span>',
-        'house_party': '<span class="badge bg-warning-subtle text-warning">Party-List</span>'
+        'executive': '<span class="badge-type" style="background:var(--cems-danger-bg);color:var(--cems-danger)">Executive</span>',
+        'senate': '<span class="badge-type" style="background:#e0f0ff;color:var(--cems-info)">Senate</span>',
+        'house_college': '<span class="badge-type" style="background:var(--cems-success-bg);color:var(--cems-success)">College Rep</span>',
+        'house_party': '<span class="badge-type" style="background:var(--cems-warning-bg);color:var(--cems-warning)">Party-List</span>'
     };
     return map[cat] || '';
 }
@@ -251,7 +251,7 @@ function updateSummary() {
         html += `<li class="list-group-item d-flex justify-content-between align-items-center">
             <span>${CEMS.escapeHtml(pos.title)}</span>
             <span>${names.length > 0
-                ? names.map(n => `<span class="badge bg-primary">${n}</span>`).join(' ')
+                ? names.map(n => `<span class="badge-status badge-active">${n}</span>`).join(' ')
                 : '<span class="text-muted">No selection</span>'
             }</span>
         </li>`;

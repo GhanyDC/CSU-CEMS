@@ -163,6 +163,7 @@ def student_login(request: Any) -> JsonResponse:
             "success": True,
             "student_id": student.student_id,
             "full_name": student.full_name,
+            "college": student.college,
             "is_admin": student.is_admin,
         },
         status=200,

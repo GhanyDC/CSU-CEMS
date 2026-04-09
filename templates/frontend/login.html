@@ -1,51 +1,341 @@
 {% extends "frontend/base.html" %}
 {% load static %}
 
-{% block title %}Login{% endblock %}
+{% block title %}Welcome{% endblock %}
 
 {% block main_class %}{% endblock %}
 
+{% block extra_head %}
+<style>
+    body { background: var(--cems-bg); overflow-x: hidden; }
+    footer { display: none; }
+
+    .landing-wrapper {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ── Hero split ─────────────────────────────────────── */
+    .landing-hero {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        min-height: 100vh;
+    }
+    @media (max-width: 991.98px) {
+        .landing-hero { grid-template-columns: 1fr; min-height: auto; }
+    }
+
+    /* Left panel — branding */
+    .hero-brand {
+        background: linear-gradient(160deg, var(--cems-primary) 0%, var(--cems-primary-dark) 100%);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 3rem 4rem;
+        position: relative;
+        overflow: hidden;
+    }
+    @media (max-width: 991.98px) {
+        .hero-brand { padding: 2.5rem 1.5rem; text-align: center; align-items: center; }
+    }
+    .hero-brand::before {
+        content: '';
+        position: absolute;
+        top: -100px; right: -100px;
+        width: 400px; height: 400px;
+        border-radius: 50%;
+        background: rgba(212, 168, 71, 0.08);
+    }
+    .hero-brand::after {
+        content: '';
+        position: absolute;
+        bottom: -60px; left: -60px;
+        width: 250px; height: 250px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.04);
+    }
+    .hero-logo {
+        width: 64px; height: 64px;
+        background: var(--cems-accent);
+        color: var(--cems-primary-dark);
+        border-radius: var(--cems-radius);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        font-weight: 800;
+        box-shadow: 0 4px 20px rgba(212, 168, 71, 0.3);
+        margin-bottom: 1.5rem;
+    }
+    .hero-title {
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 800;
+        line-height: 1.15;
+        margin-bottom: 1rem;
+        color: #fff;
+    }
+    .hero-title span { color: var(--cems-accent); }
+    .hero-subtitle {
+        font-size: 1.05rem;
+        opacity: 0.85;
+        line-height: 1.7;
+        max-width: 480px;
+        margin-bottom: 2rem;
+    }
+    .hero-features {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        margin-bottom: 2rem;
+    }
+    .hero-feature {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.95rem;
+        opacity: 0.9;
+    }
+    .hero-feature-icon {
+        width: 36px; height: 36px;
+        border-radius: 0.4rem;
+        background: rgba(255,255,255,0.1);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 1rem;
+    }
+    .hero-stats {
+        display: flex;
+        gap: 2.5rem;
+        margin-top: 1rem;
+    }
+    @media (max-width: 991.98px) {
+        .hero-stats { justify-content: center; }
+    }
+    .hero-stat-value {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: var(--cems-accent);
+        line-height: 1;
+    }
+    .hero-stat-label {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 0.25rem;
+    }
+
+    /* Right panel — login form */
+    .hero-login {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2rem;
+    }
+    .login-box {
+        width: 100%;
+        max-width: 420px;
+    }
+    .login-box .login-greeting {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--cems-text);
+        margin-bottom: 0.25rem;
+    }
+    .login-box .login-sub {
+        color: var(--cems-text-secondary);
+        margin-bottom: 2rem;
+        font-size: 0.95rem;
+    }
+    .form-floating-cems {
+        position: relative;
+        margin-bottom: 1.25rem;
+    }
+    .form-floating-cems .form-control {
+        padding: 0.85rem 1rem 0.85rem 2.75rem;
+        border: 1.5px solid var(--cems-border);
+        border-radius: var(--cems-radius-sm);
+        font-size: 0.95rem;
+        transition: border-color var(--cems-transition), box-shadow var(--cems-transition);
+        background: #fff;
+    }
+    .form-floating-cems .form-control:focus {
+        border-color: var(--cems-primary);
+        box-shadow: 0 0 0 3px rgba(107, 29, 42, 0.1);
+    }
+    .form-floating-cems .input-icon {
+        position: absolute;
+        left: 0.9rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--cems-text-secondary);
+        font-size: 1.1rem;
+        pointer-events: none;
+    }
+    .login-btn-main {
+        width: 100%;
+        padding: 0.8rem;
+        border: none;
+        border-radius: var(--cems-radius-sm);
+        background: var(--cems-primary);
+        color: #fff;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background var(--cems-transition), transform 0.1s;
+    }
+    .login-btn-main:hover { background: var(--cems-primary-light); }
+    .login-btn-main:active { transform: scale(0.99); }
+    .login-btn-main:disabled { opacity: 0.7; cursor: not-allowed; }
+
+    .divider {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 1.5rem 0;
+        font-size: 0.8rem;
+        color: var(--cems-text-secondary);
+    }
+    .divider::before, .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--cems-border);
+    }
+    .admin-link {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.7rem;
+        border: 1.5px solid var(--cems-border);
+        border-radius: var(--cems-radius-sm);
+        color: var(--cems-text-secondary);
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: all var(--cems-transition);
+    }
+    .admin-link:hover {
+        border-color: var(--cems-primary);
+        color: var(--cems-primary);
+        background: rgba(107, 29, 42, 0.03);
+    }
+    .login-footer {
+        text-align: center;
+        margin-top: 2rem;
+        font-size: 0.78rem;
+        color: var(--cems-text-secondary);
+    }
+    .login-footer i { margin-right: 0.25rem; }
+
+    /* Alert styling */
+    .login-alert {
+        padding: 0.75rem 1rem;
+        border-radius: var(--cems-radius-sm);
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+        display: none;
+    }
+    .login-alert.show { display: flex; align-items: center; gap: 0.5rem; }
+    .login-alert-danger {
+        background: var(--cems-danger-bg);
+        color: var(--cems-danger);
+        border: 1px solid rgba(220, 38, 38, 0.15);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex align-items-center justify-content-center min-vh-100" style="background:var(--cems-bg)">
-    <div class="cems-card" style="max-width:440px;width:100%;padding:2.5rem">
-        <div class="text-center mb-4">
-            <div class="mb-3">
-                <span class="brand-icon" style="width:56px;height:56px;font-size:1.5rem;display:inline-flex;align-items:center;justify-content:center;background:var(--cems-primary);color:#fff;border-radius:var(--cems-radius-sm)">E</span>
+<div class="landing-wrapper">
+    <div class="landing-hero">
+        <!-- Left: Brand & Info -->
+        <div class="hero-brand">
+            <div class="hero-logo">E</div>
+            <h1 class="hero-title">Campus <span>Election</span><br>Management System</h1>
+            <p class="hero-subtitle">
+                A secure, transparent, and efficient platform for managing campus-wide and college-level student elections. Every vote counts.
+            </p>
+
+            <div class="hero-features">
+                <div class="hero-feature">
+                    <div class="hero-feature-icon"><i class="bi bi-shield-check"></i></div>
+                    <span>End-to-end ballot integrity with anonymized voting</span>
+                </div>
+                <div class="hero-feature">
+                    <div class="hero-feature-icon"><i class="bi bi-bar-chart-line"></i></div>
+                    <span>Real-time turnout monitoring &amp; transparent results</span>
+                </div>
+                <div class="hero-feature">
+                    <div class="hero-feature-icon"><i class="bi bi-people"></i></div>
+                    <span>Multi-college support with role-based administration</span>
+                </div>
+                <div class="hero-feature">
+                    <div class="hero-feature-icon"><i class="bi bi-clock-history"></i></div>
+                    <span>Full audit trail for every election action</span>
+                </div>
             </div>
-            <h2 class="fw-bold" style="color:var(--cems-primary)">CEMS</h2>
-            <p class="text-muted">Campus Election Management System</p>
+
+            <div class="hero-stats" id="hero-stats">
+                <div>
+                    <div class="hero-stat-value" id="stat-students">—</div>
+                    <div class="hero-stat-label">Registered Students</div>
+                </div>
+                <div>
+                    <div class="hero-stat-value" id="stat-colleges">9</div>
+                    <div class="hero-stat-label">Colleges</div>
+                </div>
+                <div>
+                    <div class="hero-stat-value" id="stat-elections">—</div>
+                    <div class="hero-stat-label">Elections Held</div>
+                </div>
+            </div>
         </div>
 
-        <div id="login-alert" class="alert d-none" role="alert"></div>
+        <!-- Right: Login Form -->
+        <div class="hero-login">
+            <div class="login-box">
+                <h2 class="login-greeting">Welcome back</h2>
+                <p class="login-sub">Sign in with your student credentials to access elections.</p>
 
-        <form id="login-form" novalidate>
-            {% csrf_token %}
-            <div class="mb-3">
-                <label for="student_id" class="form-label fw-semibold" style="font-size:0.85rem">
-                    <i class="bi bi-person-badge"></i> Student ID
-                </label>
-                <input type="text" class="form-control form-control-lg" id="student_id"
-                       placeholder="e.g. 2024-10015" required autocomplete="username"
-                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
-            </div>
-            <div class="mb-4">
-                <label for="date_of_birth" class="form-label fw-semibold" style="font-size:0.85rem">
-                    <i class="bi bi-calendar-date"></i> Date of Birth
-                </label>
-                <input type="date" class="form-control form-control-lg" id="date_of_birth"
-                       required autocomplete="bday"
-                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
-            </div>
-            <button type="submit" class="btn btn-cems-primary btn-lg w-100" id="login-btn">
-                <span id="login-text">Sign In</span>
-                <span id="login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
-            </button>
-        </form>
+                <div class="login-alert login-alert-danger" id="login-alert" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span id="login-alert-text"></span>
+                </div>
 
-        <div class="text-center mt-4">
-            <small class="text-muted">
-                <i class="bi bi-shield-lock"></i> Secured with session-based authentication
-            </small>
+                <form id="login-form" novalidate>
+                    {% csrf_token %}
+                    <div class="form-floating-cems">
+                        <span class="input-icon"><i class="bi bi-person-badge"></i></span>
+                        <input type="text" class="form-control" id="student_id"
+                               placeholder="Student ID" required autocomplete="username">
+                    </div>
+                    <div class="form-floating-cems">
+                        <span class="input-icon"><i class="bi bi-calendar3"></i></span>
+                        <input type="date" class="form-control" id="date_of_birth"
+                               required autocomplete="bday">
+                    </div>
+                    <button type="submit" class="login-btn-main" id="login-btn">
+                        <span id="login-text">Sign In</span>
+                        <span id="login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                    </button>
+                </form>
+
+                <div class="divider">Election Administration</div>
+
+                <a href="{% url 'frontend:admin-login' %}" class="admin-link">
+                    <i class="bi bi-gear-fill"></i> Admin / Electoral Board Login
+                </a>
+
+                <div class="login-footer">
+                    <i class="bi bi-lock-fill"></i> Secured with session-based authentication<br>
+                    <span style="opacity:0.7">&copy; 2026 CEMS &mdash; Campus Election Management System</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -58,12 +348,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const btn = document.getElementById('login-btn');
     const spinner = document.getElementById('login-spinner');
     const text = document.getElementById('login-text');
-    const alert = document.getElementById('login-alert');
+    const alertEl = document.getElementById('login-alert');
+    const alertText = document.getElementById('login-alert-text');
 
     btn.disabled = true;
     spinner.classList.remove('d-none');
     text.textContent = 'Signing in...';
-    alert.classList.add('d-none');
+    alertEl.classList.remove('show');
 
     try {
         const res = await CEMS.api('/api/auth/login/', {
@@ -75,22 +366,20 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         });
 
         if (res.success) {
-            // Store user info in sessionStorage for UI use
             sessionStorage.setItem('cems_user', JSON.stringify({
                 student_id: res.student_id,
                 full_name: res.full_name,
+                college: res.college,
                 is_admin: res.is_admin || false
             }));
             window.location.href = '/dashboard/';
         } else {
-            alert.className = 'alert alert-danger';
-            alert.textContent = res.error || 'Login failed.';
-            alert.classList.remove('d-none');
+            alertText.textContent = res.error || 'Login failed. Check your credentials.';
+            alertEl.classList.add('show');
         }
     } catch (err) {
-        alert.className = 'alert alert-danger';
-        alert.textContent = err.message || 'Network error. Please try again.';
-        alert.classList.remove('d-none');
+        alertText.textContent = err.message || 'Network error. Please try again.';
+        alertEl.classList.add('show');
     } finally {
         btn.disabled = false;
         spinner.classList.add('d-none');

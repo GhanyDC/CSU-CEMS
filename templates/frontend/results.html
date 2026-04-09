@@ -86,7 +86,7 @@
         }
 
         document.getElementById('results-container').classList.remove('d-none');
-        document.getElementById('results-election-name').textContent = res.election || '';
+        document.getElementById('results-election-name').textContent = res.election_name || '';
 
         const positions = res.positions || [];
         let totalCandidates = 0;

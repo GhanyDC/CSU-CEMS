@@ -5,51 +5,141 @@
 
 {% block main_class %}{% endblock %}
 
+{% block extra_head %}
+<style>
+    footer { display: none; }
+    .admin-login-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(160deg, var(--cems-bg) 0%, #eee 100%);
+        padding: 2rem;
+    }
+    .admin-login-card {
+        width: 100%;
+        max-width: 440px;
+        background: #fff;
+        border-radius: var(--cems-radius);
+        box-shadow: var(--cems-shadow-lg);
+        padding: 2.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+    .admin-login-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--cems-primary) 0%, var(--cems-accent) 100%);
+    }
+    .admin-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.25rem;
+    }
+    .admin-brand-icon {
+        width: 44px; height: 44px;
+        background: var(--cems-primary);
+        color: #fff;
+        border-radius: var(--cems-radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        font-weight: 800;
+    }
+    .admin-brand h2 { font-size: 1.3rem; font-weight: 700; color: var(--cems-primary); margin: 0; }
+    .admin-brand small { font-size: 0.75rem; color: var(--cems-text-secondary); }
+    .admin-login-sub {
+        color: var(--cems-text-secondary);
+        font-size: 0.9rem;
+        margin: 1rem 0 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .admin-login-sub i { color: var(--cems-accent); }
+    .admin-input-group {
+        position: relative;
+        margin-bottom: 1rem;
+    }
+    .admin-input-group .form-control {
+        padding: 0.8rem 1rem 0.8rem 2.6rem;
+        border: 1.5px solid var(--cems-border);
+        border-radius: var(--cems-radius-sm);
+        font-size: 0.95rem;
+        transition: border-color var(--cems-transition), box-shadow var(--cems-transition);
+    }
+    .admin-input-group .form-control:focus {
+        border-color: var(--cems-primary);
+        box-shadow: 0 0 0 3px rgba(107, 29, 42, 0.1);
+    }
+    .admin-input-group .input-icon {
+        position: absolute;
+        left: 0.85rem; top: 50%;
+        transform: translateY(-50%);
+        color: var(--cems-text-secondary);
+        pointer-events: none;
+    }
+    .admin-alert {
+        padding: 0.7rem 0.9rem;
+        border-radius: var(--cems-radius-sm);
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--cems-danger-bg);
+        color: var(--cems-danger);
+        border: 1px solid rgba(220, 38, 38, 0.15);
+    }
+    .admin-alert.show { display: flex; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex align-items-center justify-content-center min-vh-100" style="background:var(--cems-bg)">
-    <div class="cems-card" style="max-width:440px;width:100%;padding:2.5rem">
-        <div class="text-center mb-4">
-            <div class="mb-3">
-                <span class="brand-icon" style="width:56px;height:56px;font-size:1.5rem;display:inline-flex;align-items:center;justify-content:center;background:var(--cems-primary);color:#fff;border-radius:var(--cems-radius-sm)">E</span>
+<div class="admin-login-page">
+    <div class="admin-login-card">
+        <div class="admin-brand">
+            <div class="admin-brand-icon">E</div>
+            <div>
+                <h2>CEMS Admin</h2>
+                <small>Election Administration Portal</small>
             </div>
-            <h2 class="fw-bold" style="color:var(--cems-primary)">CEMS Admin</h2>
-            <p class="text-muted">Election Administration Portal</p>
         </div>
 
-        <div id="admin-login-alert" class="alert d-none" role="alert"></div>
+        <div class="admin-login-sub">
+            <i class="bi bi-shield-lock-fill"></i> Authorized election officers only
+        </div>
+
+        <div class="admin-alert" id="admin-login-alert" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span id="admin-alert-text"></span>
+        </div>
 
         <form id="admin-login-form" novalidate>
             {% csrf_token %}
-            <div class="mb-3">
-                <label for="username" class="form-label fw-semibold" style="font-size:0.85rem">
-                    <i class="bi bi-person-fill-gear"></i> Username
-                </label>
-                <input type="text" class="form-control form-control-lg" id="username"
-                       placeholder="Admin username" required autocomplete="username"
-                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
+            <div class="admin-input-group">
+                <span class="input-icon"><i class="bi bi-person-fill-gear"></i></span>
+                <input type="text" class="form-control" id="username"
+                       placeholder="Admin username" required autocomplete="username">
             </div>
-            <div class="mb-4">
-                <label for="password" class="form-label fw-semibold" style="font-size:0.85rem">
-                    <i class="bi bi-key-fill"></i> Password
-                </label>
-                <input type="password" class="form-control form-control-lg" id="password"
-                       required autocomplete="current-password"
-                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
+            <div class="admin-input-group" style="margin-bottom:1.5rem">
+                <span class="input-icon"><i class="bi bi-key-fill"></i></span>
+                <input type="password" class="form-control" id="password"
+                       placeholder="Password" required autocomplete="current-password">
             </div>
             <button type="submit" class="btn btn-cems-primary btn-lg w-100" id="admin-login-btn">
-                <span id="admin-login-text">Admin Sign In</span>
+                <span id="admin-login-text">Sign In</span>
                 <span id="admin-login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
             </button>
         </form>
 
-        <div class="text-center mt-4">
-            <small class="text-muted">
-                <i class="bi bi-shield-check"></i> Authorized election officers only
-            </small>
-        </div>
-        <div class="text-center mt-2">
-            <a href="{% url 'frontend:login' %}" class="text-muted small text-decoration-none">
-                <i class="bi bi-arrow-left"></i> Back to student login
+        <div class="text-center mt-3">
+            <a href="{% url 'frontend:login' %}" class="text-decoration-none" style="font-size:0.85rem;color:var(--cems-text-secondary)">
+                <i class="bi bi-arrow-left"></i> Back to student portal
             </a>
         </div>
     </div>
@@ -61,18 +151,19 @@
 document.getElementById('admin-login-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const alertEl = document.getElementById('admin-login-alert');
+    const alertText = document.getElementById('admin-alert-text');
     const btn = document.getElementById('admin-login-btn');
     const spinner = document.getElementById('admin-login-spinner');
     const text = document.getElementById('admin-login-text');
 
-    alertEl.classList.add('d-none');
+    alertEl.classList.remove('show');
     btn.disabled = true;
     spinner.classList.remove('d-none');
     text.textContent = 'Signing in...';
 
     try {
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
-            || document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.split('=')[1];
+            || CEMS.getCookie('csrftoken');
 
         const resp = await fetch('/api/admin/auth/login/', {
             method: 'POST',
@@ -90,18 +181,16 @@ document.getElementById('admin-login-form').addEventListener('submit', async fun
         if (data.success) {
             window.location.href = '/admin-panel/';
         } else {
-            alertEl.className = 'alert alert-danger';
-            alertEl.textContent = data.error || 'Login failed.';
-            alertEl.classList.remove('d-none');
+            alertText.textContent = data.error || 'Login failed.';
+            alertEl.classList.add('show');
         }
     } catch (err) {
-        alertEl.className = 'alert alert-danger';
-        alertEl.textContent = 'Network error. Please try again.';
-        alertEl.classList.remove('d-none');
+        alertText.textContent = 'Network error. Please try again.';
+        alertEl.classList.add('show');
     } finally {
         btn.disabled = false;
         spinner.classList.add('d-none');
-        text.textContent = 'Admin Sign In';
+        text.textContent = 'Sign In';
     }
 });
 </script>
