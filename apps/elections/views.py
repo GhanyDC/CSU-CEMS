@@ -135,6 +135,9 @@ def election_ballot(request, election_id):
 
     Returns the ballot structure (positions + active candidates) for voting.
     Enforces eligibility and election status checks.
+
+    CRITICAL: For house_college positions in campus elections, only candidates
+    from the student's own college are returned.
     """
     student = request.student
 
@@ -170,11 +173,20 @@ def election_ballot(request, election_id):
 
     positions_data = []
     for pos in positions:
-        candidates = (
+        candidates_qs = (
             Candidate.objects
             .filter(position=pos, is_active=True)
             .order_by("full_name")
         )
+
+        # CRITICAL FIX: For house_college positions in campus elections,
+        # only show candidates from the student's own college
+        if pos.category == Position.Category.HOUSE_COLLEGE and election.is_campus:
+            candidates_qs = candidates_qs.filter(college=student.college)
+            # Skip position entirely if no candidates for this student's college
+            if not candidates_qs.exists():
+                continue
+
         positions_data.append({
             "id": str(pos.pk),
             "title": pos.title,
@@ -187,8 +199,10 @@ def election_ballot(request, election_id):
                     "full_name": c.full_name,
                     "party": c.party,
                     "college": c.college or "",
+                    "photo_url": c.photo.url if c.photo else None,
+                    "platform_text": c.platform_text,
                 }
-                for c in candidates
+                for c in candidates_qs
             ],
         })
 
@@ -214,7 +228,7 @@ def current_election(request):
     GET /api/elections/current/
 
     Returns the currently active election with its positions and candidates.
-    Now filters by student eligibility.
+    Now filters by student eligibility and college scope.
     """
     student = request.student
     elections = _get_eligible_elections(student)
@@ -236,11 +250,18 @@ def current_election(request):
 
     positions_data = []
     for pos in positions:
-        candidates = (
+        candidates_qs = (
             Candidate.objects
             .filter(position=pos, is_active=True)
             .order_by("full_name")
         )
+
+        # College representative filtering for campus elections
+        if pos.category == Position.Category.HOUSE_COLLEGE and election.is_campus:
+            candidates_qs = candidates_qs.filter(college=student.college)
+            if not candidates_qs.exists():
+                continue
+
         positions_data.append({
             "id": str(pos.pk),
             "title": pos.title,
@@ -252,8 +273,10 @@ def current_election(request):
                     "full_name": c.full_name,
                     "party": c.party,
                     "college": c.college,
+                    "photo_url": c.photo.url if c.photo else None,
+                    "platform_text": c.platform_text,
                 }
-                for c in candidates
+                for c in candidates_qs
             ],
         })
 

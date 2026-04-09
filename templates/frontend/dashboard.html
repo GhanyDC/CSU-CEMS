@@ -4,127 +4,71 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block navbar %}
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
-    <div class="container">
-        <a class="navbar-brand fw-bold" href="/dashboard/">
-            <i class="bi bi-ballot-fill"></i> CEMS
+<nav class="cems-navbar navbar">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/dashboard/">
+            <span class="brand-icon">E</span> CEMS
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link active" href="/dashboard/">
-                        <i class="bi bi-speedometer2"></i> Dashboard
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/ballot/">
-                        <i class="bi bi-pencil-square"></i> Vote
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/results/">
-                        <i class="bi bi-bar-chart-fill"></i> Results
-                    </a>
-                </li>
-                <li class="nav-item d-none" id="nav-admin">
-                    <a class="nav-link" href="/admin-panel/">
-                        <i class="bi bi-gear-fill"></i> Admin
-                    </a>
-                </li>
-            </ul>
-            <div class="navbar-text text-white me-3">
-                <i class="bi bi-person-circle"></i>
-                <span id="nav-user-name">Student</span>
-            </div>
-            <button class="btn btn-outline-light btn-sm" id="logout-btn">
-                <i class="bi bi-box-arrow-right"></i> Logout
-            </button>
+        <div class="d-flex align-items-center gap-2">
+            <a class="nav-link text-white" href="/dashboard/" style="font-size:0.85rem"><i class="bi bi-speedometer2"></i><span class="d-none d-md-inline ms-1">Dashboard</span></a>
+            <a class="nav-link text-white" href="/ballot/" style="font-size:0.85rem;opacity:0.8"><i class="bi bi-pencil-square"></i><span class="d-none d-md-inline ms-1">Vote</span></a>
+            <a class="nav-link text-white" href="/results/" style="font-size:0.85rem;opacity:0.8"><i class="bi bi-bar-chart-fill"></i><span class="d-none d-md-inline ms-1">Results</span></a>
+            <a class="nav-link text-white d-none" href="/admin-panel/" id="nav-admin" style="font-size:0.85rem;opacity:0.8"><i class="bi bi-gear-fill"></i></a>
+            <span class="d-none d-md-inline text-white" style="font-size:0.8rem;opacity:0.8" id="nav-user-name"></span>
+            <button class="btn btn-sm btn-outline-light" id="logout-btn"><i class="bi bi-box-arrow-right"></i></button>
         </div>
     </div>
 </nav>
 {% endblock %}
 
 {% block content %}
-<!-- Welcome Banner -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card bg-primary text-white border-0 shadow">
-            <div class="card-body p-4">
-                <h3 class="mb-1"><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
-                <p class="mb-0 opacity-75">Campus Election Management System — Your vote matters.</p>
-            </div>
-        </div>
+<div class="container-fluid px-3 px-md-4 py-3">
+    <!-- Welcome -->
+    <div class="cems-card p-4 mb-4" style="background:linear-gradient(135deg,var(--cems-primary),var(--cems-primary-light));color:#fff;border:none">
+        <h3 class="mb-1"><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
+        <p class="mb-0" style="opacity:0.85">Campus Election Management System — Your vote matters.</p>
     </div>
-</div>
 
-<!-- Status Cards -->
-<div class="row g-4 mb-4">
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body text-center">
-                <div class="mb-3">
-                    <i class="bi bi-calendar-event text-primary" style="font-size: 2.5rem;"></i>
-                </div>
-                <h5 class="card-title">Election Status</h5>
-                <div id="election-status-badge">
-                    <span class="badge bg-secondary fs-6">Loading...</span>
-                </div>
-                <p class="text-muted mt-2 mb-0" id="election-name-text">—</p>
+    <!-- Metric Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="metric-card text-center" style="min-height:140px">
+                <div class="mb-2"><i class="bi bi-calendar-event" style="font-size:2rem;color:var(--cems-primary)"></i></div>
+                <div class="metric-label">Election Status</div>
+                <div id="election-status-badge"><span class="badge-status badge-draft">Loading&hellip;</span></div>
+                <div class="metric-sub mt-1" id="election-name-text">—</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="metric-card text-center" style="min-height:140px">
+                <div class="mb-2"><i class="bi bi-check2-circle" style="font-size:2rem;color:var(--cems-success)"></i></div>
+                <div class="metric-label">Your Vote</div>
+                <div id="vote-status-badge"><span class="badge-status badge-draft">Loading&hellip;</span></div>
+                <div class="metric-sub mt-1" id="vote-status-text">—</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="metric-card text-center" style="min-height:140px">
+                <div class="mb-2"><i class="bi bi-clock" style="font-size:2rem;color:var(--cems-warning)"></i></div>
+                <div class="metric-label">Time Remaining</div>
+                <div id="time-remaining"><span class="badge-status badge-draft">—</span></div>
+                <div class="metric-sub mt-1" id="time-detail-text">—</div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body text-center">
-                <div class="mb-3">
-                    <i class="bi bi-check2-circle text-success" style="font-size: 2.5rem;"></i>
-                </div>
-                <h5 class="card-title">Your Vote</h5>
-                <div id="vote-status-badge">
-                    <span class="badge bg-secondary fs-6">Loading...</span>
-                </div>
-                <p class="text-muted mt-2 mb-0" id="vote-status-text">—</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body text-center">
-                <div class="mb-3">
-                    <i class="bi bi-clock text-warning" style="font-size: 2.5rem;"></i>
-                </div>
-                <h5 class="card-title">Time Remaining</h5>
-                <div id="time-remaining">
-                    <span class="badge bg-secondary fs-6">—</span>
-                </div>
-                <p class="text-muted mt-2 mb-0" id="time-detail-text">—</p>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Quick Actions -->
-<div class="row g-4">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body">
-                <h5><i class="bi bi-lightning-fill text-warning"></i> Your Elections</h5>
-                <div id="elections-list" class="mt-3">
-                    <div class="text-muted">Loading your elections...</div>
-                </div>
+    <!-- Elections & Info -->
+    <div class="row g-3">
+        <div class="col-md-7">
+            <div class="cems-card p-4">
+                <h5 class="mb-3"><i class="bi bi-lightning-fill" style="color:var(--cems-accent)"></i> Your Elections</h5>
+                <div id="elections-list"><div class="text-muted">Loading&hellip;</div></div>
             </div>
         </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body">
-                <h5><i class="bi bi-info-circle text-info"></i> Election Information</h5>
-                <div id="election-info" class="mt-3">
-                    <div class="text-muted">Loading election details...</div>
-                </div>
+        <div class="col-md-5">
+            <div class="cems-card p-4">
+                <h5 class="mb-3"><i class="bi bi-info-circle" style="color:var(--cems-info)"></i> Election Info</h5>
+                <div id="election-info"><div class="text-muted">Loading&hellip;</div></div>
             </div>
         </div>
     </div>
@@ -157,7 +101,7 @@
         // Update status cards
         if (activeElections.length > 0) {
             document.getElementById('election-status-badge').innerHTML =
-                `<span class="badge bg-success fs-6"><i class="bi bi-broadcast"></i> ${activeElections.length} Active</span>`;
+                `<span class="badge-status badge-active"><i class="bi bi-broadcast"></i> ${activeElections.length} Active</span>`;
             document.getElementById('election-name-text').textContent =
                 activeElections.map(e => e.name).join(', ');
 
@@ -166,15 +110,15 @@
 
             if (allVoted) {
                 document.getElementById('vote-status-badge').innerHTML =
-                    '<span class="badge bg-success fs-6"><i class="bi bi-check-lg"></i> All Voted</span>';
+                    '<span class="badge-status badge-active"><i class="bi bi-check-lg"></i> All Voted</span>';
                 document.getElementById('vote-status-text').textContent = 'You have voted in all eligible elections.';
             } else if (someVoted) {
                 document.getElementById('vote-status-badge').innerHTML =
-                    '<span class="badge bg-warning fs-6"><i class="bi bi-exclamation-triangle"></i> Partially Voted</span>';
+                    '<span class="badge-status badge-draft"><i class="bi bi-exclamation-triangle"></i> Partially Voted</span>';
                 document.getElementById('vote-status-text').textContent = 'You still have elections to vote in.';
             } else {
                 document.getElementById('vote-status-badge').innerHTML =
-                    '<span class="badge bg-warning fs-6"><i class="bi bi-exclamation-triangle"></i> Not Yet</span>';
+                    '<span class="badge-status badge-closed"><i class="bi bi-exclamation-triangle"></i> Not Yet</span>';
                 document.getElementById('vote-status-text').textContent = "You haven't voted yet. Cast your ballot now!";
             }
 
@@ -185,26 +129,26 @@
                 const hours = Math.floor(diff / 3600000);
                 const mins = Math.floor((diff % 3600000) / 60000);
                 document.getElementById('time-remaining').innerHTML =
-                    `<span class="badge bg-warning fs-6">${hours}h ${mins}m</span>`;
+                    `<span class="badge-status badge-active" style="font-size:0.9rem">${hours}h ${mins}m</span>`;
                 document.getElementById('time-detail-text').textContent =
                     `Ends: ${firstEnd.toLocaleString()}`;
             } else {
                 document.getElementById('time-remaining').innerHTML =
-                    '<span class="badge bg-danger fs-6">Ended</span>';
+                    '<span class="badge-status badge-closed">Ended</span>';
             }
         } else if (publishedElections.length > 0) {
             document.getElementById('election-status-badge').innerHTML =
-                '<span class="badge bg-info fs-6"><i class="bi bi-check-circle"></i> Results Available</span>';
+                '<span class="badge-status badge-published"><i class="bi bi-check-circle"></i> Results Available</span>';
             document.getElementById('election-name-text').textContent = publishedElections[0].name;
             document.getElementById('vote-status-badge').innerHTML =
-                '<span class="badge bg-secondary fs-6">Completed</span>';
+                '<span class="badge-status badge-draft">Completed</span>';
             document.getElementById('vote-status-text').textContent = 'View published results.';
         } else {
             document.getElementById('election-status-badge').innerHTML =
-                '<span class="badge bg-secondary fs-6"><i class="bi bi-pause-circle"></i> No Elections</span>';
+                '<span class="badge-status badge-draft"><i class="bi bi-pause-circle"></i> No Elections</span>';
             document.getElementById('election-name-text').textContent = 'No active elections for you right now.';
             document.getElementById('vote-status-badge').innerHTML =
-                '<span class="badge bg-secondary fs-6">N/A</span>';
+                '<span class="badge-status badge-draft">N/A</span>';
         }
 
         // Render election cards
@@ -223,29 +167,29 @@
                 let statusBadge, actionBtn;
 
                 if (e.status === 'active' && e.has_voted) {
-                    statusBadge = '<span class="badge bg-success">Voted</span>';
-                    actionBtn = `<span class="text-success"><i class="bi bi-check-circle-fill"></i> Ballot Submitted</span>`;
+                    statusBadge = '<span class="badge-status badge-active">Voted</span>';
+                    actionBtn = `<span style="color:var(--cems-success)"><i class="bi bi-check-circle-fill"></i> Submitted</span>`;
                 } else if (e.status === 'active') {
-                    statusBadge = '<span class="badge bg-warning text-dark">Not Voted</span>';
-                    actionBtn = `<a href="/ballot/?election=${e.id}" class="btn btn-primary btn-sm"><i class="bi bi-pencil-square"></i> Vote Now</a>`;
+                    statusBadge = '<span class="badge-status badge-closed">Not Voted</span>';
+                    actionBtn = `<a href="/ballot/?election=${e.id}" class="btn btn-cems-primary btn-sm"><i class="bi bi-pencil-square"></i> Vote Now</a>`;
                 } else if (e.status === 'published') {
-                    statusBadge = '<span class="badge bg-info">Published</span>';
-                    actionBtn = `<a href="/results/?election=${e.id}" class="btn btn-outline-primary btn-sm"><i class="bi bi-bar-chart-fill"></i> View Results</a>`;
+                    statusBadge = '<span class="badge-status badge-published">Published</span>';
+                    actionBtn = `<a href="/results/?election=${e.id}" class="btn btn-cems-outline btn-sm"><i class="bi bi-bar-chart-fill"></i> Results</a>`;
                 } else {
-                    statusBadge = `<span class="badge bg-secondary">${CEMS.escapeHtml(e.status)}</span>`;
+                    statusBadge = `<span class="badge-status badge-draft">${CEMS.escapeHtml(e.status)}</span>`;
                     actionBtn = '';
                 }
 
                 html += `
-                    <div class="card mb-2 border-0 bg-light">
-                        <div class="card-body py-3 d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>${CEMS.escapeHtml(e.name)}</strong>
-                                <br><small class="text-muted">${typeLabel}</small>
+                    <div class="election-card">
+                        <div style="flex:1;min-width:0">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="election-card-title">${CEMS.escapeHtml(e.name)}</span>
                                 ${statusBadge}
                             </div>
-                            <div>${actionBtn}</div>
+                            <div class="election-card-meta"><span>${typeLabel}</span></div>
                         </div>
+                        <div>${actionBtn}</div>
                     </div>`;
             }
             listContainer.innerHTML = html;

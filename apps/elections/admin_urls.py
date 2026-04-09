@@ -23,12 +23,28 @@ urlpatterns = [
         admin_views.update_candidate,
         name="update-candidate",
     ),
+    path(
+        "<uuid:election_id>/candidates/<uuid:candidate_id>/delete/",
+        admin_views.delete_candidate,
+        name="delete-candidate",
+    ),
+    path(
+        "<uuid:election_id>/candidates/<uuid:candidate_id>/photo/",
+        admin_views.upload_candidate_photo,
+        name="upload-candidate-photo",
+    ),
 
     # Voter roll management
     path("<uuid:election_id>/voter-roll/import/", admin_views.import_voter_roll, name="voter-roll-import"),
     path("<uuid:election_id>/voter-roll/summary/", admin_views.voter_roll_summary, name="voter-roll-summary"),
     path("<uuid:election_id>/voter-roll/generate/", admin_views.generate_voter_roll, name="voter-roll-generate"),
     path("<uuid:election_id>/voter-roll/finalize/", admin_views.finalize_voter_roll, name="voter-roll-finalize"),
+
+    # Registrar batch management
+    path("registrar-batches/", admin_views.list_registrar_batches, name="registrar-batches"),
+    path("registrar-batches/create/", admin_views.create_registrar_batch, name="registrar-batch-create"),
+    path("registrar-batches/<uuid:batch_id>/import/", admin_views.import_registrar_batch, name="registrar-batch-import"),
+    path("<uuid:election_id>/registrar-batch/assign/", admin_views.assign_registrar_batch, name="registrar-batch-assign"),
 
     # Readiness check
     path("<uuid:election_id>/readiness/", admin_views.readiness_check, name="readiness"),

@@ -127,6 +127,16 @@ STATIC_ROOT: str = str(BASE_DIR / "staticfiles")
 STATICFILES_DIRS: List[str] = [str(BASE_DIR / "static")]
 
 # ---------------------------------------------------------------------------
+# Media files (candidate photos, imports, etc.)
+# ---------------------------------------------------------------------------
+MEDIA_URL: str = "/media/"
+MEDIA_ROOT: str = str(BASE_DIR / "media")
+
+# Candidate photo constraints
+CEMS_MAX_PHOTO_SIZE_MB: int = 2
+CEMS_ALLOWED_PHOTO_TYPES: List[str] = ["image/jpeg", "image/png", "image/webp"]
+
+# ---------------------------------------------------------------------------
 # Security — hardened defaults (overridden in local.py for dev)
 # ---------------------------------------------------------------------------
 # CSRF
@@ -137,6 +147,7 @@ CSRF_COOKIE_SECURE: bool = True
 SESSION_COOKIE_HTTPONLY: bool = True
 SESSION_COOKIE_SECURE: bool = True
 SESSION_COOKIE_SAMESITE: str = "Lax"
+SESSION_COOKIE_AGE: int = 3600  # 1 hour — appropriate for a voting application
 SESSION_ENGINE: str = "django.contrib.sessions.backends.db"
 
 # XSS / Clickjacking / MIME

@@ -6,45 +6,46 @@
 {% block main_class %}{% endblock %}
 
 {% block content %}
-<div class="login-page d-flex align-items-center justify-content-center min-vh-100">
-    <div class="login-card card shadow-lg border-0" style="max-width: 440px; width: 100%;">
-        <div class="card-body p-5">
-            <div class="text-center mb-4">
-                <div class="login-icon mb-3">
-                    <i class="bi bi-ballot-fill text-primary" style="font-size: 3rem;"></i>
-                </div>
-                <h2 class="fw-bold text-primary">CEMS</h2>
-                <p class="text-muted">Campus Election Management System</p>
+<div class="d-flex align-items-center justify-content-center min-vh-100" style="background:var(--cems-bg)">
+    <div class="cems-card" style="max-width:440px;width:100%;padding:2.5rem">
+        <div class="text-center mb-4">
+            <div class="mb-3">
+                <span class="brand-icon" style="width:56px;height:56px;font-size:1.5rem;display:inline-flex;align-items:center;justify-content:center;background:var(--cems-primary);color:#fff;border-radius:var(--cems-radius-sm)">E</span>
             </div>
+            <h2 class="fw-bold" style="color:var(--cems-primary)">CEMS</h2>
+            <p class="text-muted">Campus Election Management System</p>
+        </div>
 
-            <div id="login-alert" class="alert d-none" role="alert"></div>
+        <div id="login-alert" class="alert d-none" role="alert"></div>
 
-            <form id="login-form" novalidate>
-                <div class="mb-3">
-                    <label for="student_id" class="form-label fw-semibold">
-                        <i class="bi bi-person-badge"></i> Student ID
-                    </label>
-                    <input type="text" class="form-control form-control-lg" id="student_id"
-                           placeholder="e.g. 2024-10015" required autocomplete="username">
-                </div>
-                <div class="mb-4">
-                    <label for="date_of_birth" class="form-label fw-semibold">
-                        <i class="bi bi-calendar-date"></i> Date of Birth
-                    </label>
-                    <input type="date" class="form-control form-control-lg" id="date_of_birth"
-                           required autocomplete="bday">
-                </div>
-                <button type="submit" class="btn btn-primary btn-lg w-100" id="login-btn">
-                    <span id="login-text">Sign In</span>
-                    <span id="login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
-                </button>
-            </form>
-
-            <div class="text-center mt-4">
-                <small class="text-muted">
-                    <i class="bi bi-shield-lock"></i> Secured with session-based authentication
-                </small>
+        <form id="login-form" novalidate>
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="student_id" class="form-label fw-semibold" style="font-size:0.85rem">
+                    <i class="bi bi-person-badge"></i> Student ID
+                </label>
+                <input type="text" class="form-control form-control-lg" id="student_id"
+                       placeholder="e.g. 2024-10015" required autocomplete="username"
+                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
             </div>
+            <div class="mb-4">
+                <label for="date_of_birth" class="form-label fw-semibold" style="font-size:0.85rem">
+                    <i class="bi bi-calendar-date"></i> Date of Birth
+                </label>
+                <input type="date" class="form-control form-control-lg" id="date_of_birth"
+                       required autocomplete="bday"
+                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
+            </div>
+            <button type="submit" class="btn btn-cems-primary btn-lg w-100" id="login-btn">
+                <span id="login-text">Sign In</span>
+                <span id="login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+            </button>
+        </form>
+
+        <div class="text-center mt-4">
+            <small class="text-muted">
+                <i class="bi bi-shield-lock"></i> Secured with session-based authentication
+            </small>
         </div>
     </div>
 </div>

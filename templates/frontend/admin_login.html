@@ -6,56 +6,57 @@
 {% block main_class %}{% endblock %}
 
 {% block content %}
-<div class="login-page d-flex align-items-center justify-content-center min-vh-100">
-    <div class="login-card card shadow-lg border-0" style="max-width: 440px; width: 100%;">
-        <div class="card-body p-5">
-            <div class="text-center mb-4">
-                <div class="login-icon mb-3">
-                    <i class="bi bi-shield-lock-fill text-warning" style="font-size: 3rem;"></i>
-                </div>
-                <h2 class="fw-bold text-warning">CEMS Admin</h2>
-                <p class="text-muted">Election Administration Portal</p>
+<div class="d-flex align-items-center justify-content-center min-vh-100" style="background:var(--cems-bg)">
+    <div class="cems-card" style="max-width:440px;width:100%;padding:2.5rem">
+        <div class="text-center mb-4">
+            <div class="mb-3">
+                <span class="brand-icon" style="width:56px;height:56px;font-size:1.5rem;display:inline-flex;align-items:center;justify-content:center;background:var(--cems-primary);color:#fff;border-radius:var(--cems-radius-sm)">E</span>
             </div>
+            <h2 class="fw-bold" style="color:var(--cems-primary)">CEMS Admin</h2>
+            <p class="text-muted">Election Administration Portal</p>
+        </div>
 
-            <div id="admin-login-alert" class="alert d-none" role="alert"></div>
+        <div id="admin-login-alert" class="alert d-none" role="alert"></div>
 
-            <form id="admin-login-form" novalidate>
-                <div class="mb-3">
-                    <label for="username" class="form-label fw-semibold">
-                        <i class="bi bi-person-fill-gear"></i> Username
-                    </label>
-                    <input type="text" class="form-control form-control-lg" id="username"
-                           placeholder="Admin username" required autocomplete="username">
-                </div>
-                <div class="mb-4">
-                    <label for="password" class="form-label fw-semibold">
-                        <i class="bi bi-key-fill"></i> Password
-                    </label>
-                    <input type="password" class="form-control form-control-lg" id="password"
-                           required autocomplete="current-password">
-                </div>
-                <button type="submit" class="btn btn-warning btn-lg w-100 text-white" id="admin-login-btn">
-                    <span id="admin-login-text">Admin Sign In</span>
-                    <span id="admin-login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
-                </button>
-            </form>
-
-            <div class="text-center mt-4">
-                <small class="text-muted">
-                    <i class="bi bi-shield-check"></i> Authorized election officers only
-                </small>
+        <form id="admin-login-form" novalidate>
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="username" class="form-label fw-semibold" style="font-size:0.85rem">
+                    <i class="bi bi-person-fill-gear"></i> Username
+                </label>
+                <input type="text" class="form-control form-control-lg" id="username"
+                       placeholder="Admin username" required autocomplete="username"
+                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
             </div>
-            <div class="text-center mt-2">
-                <a href="{% url 'frontend:login' %}" class="text-muted small">
-                    <i class="bi bi-arrow-left"></i> Back to student login
-                </a>
+            <div class="mb-4">
+                <label for="password" class="form-label fw-semibold" style="font-size:0.85rem">
+                    <i class="bi bi-key-fill"></i> Password
+                </label>
+                <input type="password" class="form-control form-control-lg" id="password"
+                       required autocomplete="current-password"
+                       style="border-color:var(--cems-border);border-radius:var(--cems-radius-sm)">
             </div>
+            <button type="submit" class="btn btn-cems-primary btn-lg w-100" id="admin-login-btn">
+                <span id="admin-login-text">Admin Sign In</span>
+                <span id="admin-login-spinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+            </button>
+        </form>
+
+        <div class="text-center mt-4">
+            <small class="text-muted">
+                <i class="bi bi-shield-check"></i> Authorized election officers only
+            </small>
+        </div>
+        <div class="text-center mt-2">
+            <a href="{% url 'frontend:login' %}" class="text-muted small text-decoration-none">
+                <i class="bi bi-arrow-left"></i> Back to student login
+            </a>
         </div>
     </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block extra_scripts %}
 <script>
 document.getElementById('admin-login-form').addEventListener('submit', async function(e) {
     e.preventDefault();

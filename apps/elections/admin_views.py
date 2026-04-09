@@ -10,6 +10,9 @@ import io
 import json
 import logging
 
+from PIL import Image
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_protect
@@ -17,8 +20,12 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.decorators import admin_login_required, role_required
 from apps.accounts.models import AdminRole
-from apps.elections.models import Candidate, Election, Position
-from apps.elections.services import VoterRollError, VoterRollService
+from apps.elections.models import Candidate, Election, Position, RegistrarImportBatch
+from apps.elections.services import (
+    RegistrarBatchService,
+    VoterRollError,
+    VoterRollService,
+)
 from apps.elections.setup_services import (
     CandidateManagementService,
     ElectionSetupError,
@@ -26,7 +33,51 @@ from apps.elections.setup_services import (
     ReadinessService,
 )
 
-logger = logging.getLogger("cems.application")
+logger = logging.getLogger(__name__)
+
+MAX_CSV_ROWS = 50_000
+
+
+def _sanitize_csv_cell(value):
+    """Strip formula-injection prefixes from CSV cell values."""
+    if value and isinstance(value, str) and value[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def _parse_csv_safely(csv_file, max_size_mb, max_rows=MAX_CSV_ROWS):
+    """Parse a CSV upload with size, row-count, and formula-injection protections.
+
+    Returns (rows, error_response). If error_response is not None, return it directly.
+    """
+    if csv_file.size > max_size_mb * 1024 * 1024:
+        return None, JsonResponse(
+            {"success": False, "error": f"File too large. Maximum size is {max_size_mb} MB."},
+            status=400,
+        )
+    try:
+        content = csv_file.read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(content))
+        rows = []
+        for i, row in enumerate(reader):
+            if i >= max_rows:
+                return None, JsonResponse(
+                    {"success": False, "error": f"File has too many rows. Maximum is {max_rows:,}."},
+                    status=400,
+                )
+            rows.append({k: _sanitize_csv_cell(v) for k, v in row.items()})
+    except (UnicodeDecodeError, csv.Error) as e:
+        logger.warning("CSV parse error: %s", e)
+        return None, JsonResponse(
+            {"success": False, "error": "CSV file is invalid or corrupt. Please check the format and try again."},
+            status=400,
+        )
+    if not rows:
+        return None, JsonResponse(
+            {"success": False, "error": "CSV file contains no data rows."},
+            status=400,
+        )
+    return rows, None
 
 # Roles allowed for setup operations (create, import, candidate management)
 SETUP_ROLES = (AdminRole.ELECTORAL_BOARD_HEAD, AdminRole.ELECTORAL_BOARD_OPERATOR)
@@ -65,6 +116,8 @@ def _serialize_election_summary(election):
         "start_time": election.start_time.isoformat(),
         "end_time": election.end_time.isoformat(),
         "voter_roll_finalized": election.is_voter_roll_finalized,
+        "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
+        "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
         "created_at": election.created_at.isoformat(),
     }
 
@@ -96,6 +149,8 @@ def _serialize_election_detail(election):
                     "party": c.party,
                     "college": c.college or "",
                     "is_active": c.is_active,
+                    "photo_url": c.photo.url if c.photo else None,
+                    "platform_text": c.platform_text,
                 }
                 for c in candidates
             ],
@@ -119,6 +174,8 @@ def _serialize_election_detail(election):
             election.voter_roll_finalized_at.isoformat()
             if election.voter_roll_finalized_at else None
         ),
+        "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
+        "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
         "created_at": election.created_at.isoformat(),
         "positions": positions_data,
         "voter_roll_summary": {
@@ -410,28 +467,9 @@ def import_voter_roll(request, election_id):
             status=400,
         )
 
-    # Validate file size (max 5 MB)
-    if csv_file.size > 5 * 1024 * 1024:
-        return JsonResponse(
-            {"success": False, "error": "File too large. Maximum size is 5 MB."},
-            status=400,
-        )
-
-    try:
-        content = csv_file.read().decode("utf-8")
-        reader = csv.DictReader(io.StringIO(content))
-        rows = list(reader)
-    except (UnicodeDecodeError, csv.Error) as e:
-        return JsonResponse(
-            {"success": False, "error": f"Could not parse CSV: {e}"},
-            status=400,
-        )
-
-    if not rows:
-        return JsonResponse(
-            {"success": False, "error": "CSV file contains no data rows."},
-            status=400,
-        )
+    rows, err_resp = _parse_csv_safely(csv_file, max_size_mb=5)
+    if err_resp:
+        return err_resp
 
     # Verify student_id column exists
     if "student_id" not in (rows[0].keys() if rows else []):
@@ -577,3 +615,300 @@ def readiness_check(request, election_id):
 
     report = ReadinessService.check_readiness(election)
     return JsonResponse({"success": True, **report})
+
+
+# ---------------------------------------------------------------------------
+# Candidate photo upload
+# ---------------------------------------------------------------------------
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def upload_candidate_photo(request, election_id, candidate_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/candidates/<candidate_id>/photo/
+    Content-Type: multipart/form-data with 'photo' field.
+
+    Upload or replace a candidate's campaign photo.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status != Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "Photos can only be uploaded while election is in Draft."},
+            status=400,
+        )
+
+    try:
+        candidate = Candidate.objects.select_related("position__election").get(
+            pk=candidate_id, position__election=election,
+        )
+    except (Candidate.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse(
+            {"success": False, "error": "Candidate not found in this election."},
+            status=404,
+        )
+
+    photo = request.FILES.get("photo")
+    if not photo:
+        return JsonResponse(
+            {"success": False, "error": "photo file is required."},
+            status=400,
+        )
+
+    if photo.size == 0:
+        return JsonResponse(
+            {"success": False, "error": "Photo file is empty."},
+            status=400,
+        )
+
+    # Validate file size
+    max_size = getattr(settings, "CEMS_MAX_PHOTO_SIZE_MB", 2) * 1024 * 1024
+    if photo.size > max_size:
+        return JsonResponse(
+            {"success": False, "error": f"Photo too large. Maximum size is {getattr(settings, 'CEMS_MAX_PHOTO_SIZE_MB', 2)} MB."},
+            status=400,
+        )
+
+    # Validate actual image content using Pillow (magic number check)
+    try:
+        photo.seek(0)
+        img = Image.open(photo)
+        img.verify()
+        photo.seek(0)
+    except Exception:
+        return JsonResponse(
+            {"success": False, "error": "Invalid image file. Upload a valid JPEG, PNG, or WebP image."},
+            status=400,
+        )
+
+    allowed_formats = {"JPEG", "PNG", "WEBP"}
+    img_format = Image.open(photo).format
+    photo.seek(0)
+    if img_format not in allowed_formats:
+        return JsonResponse(
+            {"success": False, "error": f"Invalid image format '{img_format}'. Allowed: JPEG, PNG, WebP."},
+            status=400,
+        )
+
+    # Delete old photo if exists
+    if candidate.photo:
+        candidate.photo.delete(save=False)
+
+    candidate.photo = photo
+    candidate.save(update_fields=["photo", "updated_at"])
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Photo uploaded for {candidate.full_name}.",
+        "photo_url": candidate.photo.url,
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def delete_candidate(request, election_id, candidate_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/candidates/<candidate_id>/delete/
+
+    Soft-delete (deactivate) a candidate. Election must be in Draft.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status != Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "Candidates can only be removed while election is in Draft."},
+            status=400,
+        )
+
+    try:
+        candidate = Candidate.objects.select_related("position__election").get(
+            pk=candidate_id, position__election=election,
+        )
+    except (Candidate.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse(
+            {"success": False, "error": "Candidate not found in this election."},
+            status=404,
+        )
+
+    candidate.is_active = False
+    candidate.save(update_fields=["is_active", "updated_at"])
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Candidate '{candidate.full_name}' deactivated.",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Registrar batch management
+# ---------------------------------------------------------------------------
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+def list_registrar_batches(request):
+    """
+    GET /api/admin/elections/setup/registrar-batches/
+
+    List all active registrar import batches.
+    """
+    include_archived = request.GET.get("include_archived", "").lower() == "true"
+    batches = RegistrarBatchService.list_batches(include_archived=include_archived)
+
+    return JsonResponse({
+        "success": True,
+        "batches": [
+            {
+                "id": str(b.pk),
+                "name": b.name,
+                "academic_year": b.academic_year,
+                "description": b.description,
+                "status": b.status,
+                "total_imported": b.total_imported,
+                "imported_by": b.imported_by,
+                "created_at": b.created_at.isoformat(),
+            }
+            for b in batches
+        ],
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def create_registrar_batch(request):
+    """
+    POST /api/admin/elections/setup/registrar-batches/create/
+    Body: {"name": "...", "academic_year": "...", "description": "..."}
+    """
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    try:
+        batch = RegistrarBatchService.create_batch(
+            name=data.get("name", ""),
+            academic_year=data.get("academic_year", ""),
+            description=data.get("description", ""),
+            imported_by=request.admin_profile.display_name,
+        )
+    except VoterRollError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Registrar batch '{batch.name}' created.",
+        "batch": {
+            "id": str(batch.pk),
+            "name": batch.name,
+            "academic_year": batch.academic_year,
+        },
+    }, status=201)
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def import_registrar_batch(request, batch_id):
+    """
+    POST /api/admin/elections/setup/registrar-batches/<batch_id>/import/
+    Content-Type: multipart/form-data with 'csv_file' field.
+
+    Import student data into the registrar batch.
+    CSV columns: student_id, full_name, date_of_birth, college, course, year
+    """
+    try:
+        batch = RegistrarImportBatch.objects.get(pk=batch_id)
+    except (RegistrarImportBatch.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse(
+            {"success": False, "error": "Batch not found."}, status=404
+        )
+
+    if batch.status != RegistrarImportBatch.Status.ACTIVE:
+        return JsonResponse(
+            {"success": False, "error": "Cannot import into an archived batch."},
+            status=400,
+        )
+
+    csv_file = request.FILES.get("csv_file")
+    if not csv_file:
+        return JsonResponse(
+            {"success": False, "error": "csv_file is required."},
+            status=400,
+        )
+
+    rows, err_resp = _parse_csv_safely(csv_file, max_size_mb=10)
+    if err_resp:
+        return err_resp
+
+    if "student_id" not in (rows[0].keys() if rows else []):
+        return JsonResponse(
+            {"success": False, "error": "CSV must have a 'student_id' column."},
+            status=400,
+        )
+
+    try:
+        summary = RegistrarBatchService.import_students_to_batch(batch, rows)
+    except VoterRollError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": (
+            f"Import complete: {summary['created']} created, "
+            f"{summary['updated']} updated, {summary['skipped']} skipped."
+        ),
+        "summary": summary,
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def assign_registrar_batch(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/registrar-batch/assign/
+    Body: {"batch_id": "..."}
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    batch_id = data.get("batch_id")
+    if not batch_id:
+        return JsonResponse(
+            {"success": False, "error": "batch_id is required."},
+            status=400,
+        )
+
+    try:
+        batch = RegistrarImportBatch.objects.get(pk=batch_id)
+    except (RegistrarImportBatch.DoesNotExist, ValueError, ValidationError):
+        return JsonResponse(
+            {"success": False, "error": "Batch not found."}, status=404
+        )
+
+    try:
+        RegistrarBatchService.assign_batch_to_election(election, batch)
+    except VoterRollError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Batch '{batch.name}' assigned to election.",
+    })

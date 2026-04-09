@@ -88,7 +88,14 @@ def admin_login_page(request):
     if profile is not None:
         return redirect("frontend:admin-panel")
     get_token(request)
-    return render(request, "frontend/admin_login.html")
+    return render(
+        request,
+        "frontend/admin_login.html",
+        {
+            "bootstrap_user": None,
+            "bootstrap_admin": None,
+        },
+    )
 
 
 def admin_page(request):

@@ -15,6 +15,7 @@ from apps.elections.models import (
     Election,
     EligibleVoter,
     Position,
+    RegistrarImportBatch,
     VerificationRecord,
 )
 from apps.voting.models import Ballot, BallotSelection
@@ -204,7 +205,7 @@ class ResultService:
         vote_counts = (
             BallotSelection.objects
             .filter(position=position)
-            .values("candidate__id", "candidate__full_name", "candidate__party")
+            .values("candidate__id", "candidate__full_name", "candidate__party", "candidate__college", "candidate__photo")
             .annotate(votes=Count("id"))
             .order_by("-votes")
         )
@@ -214,6 +215,8 @@ class ResultService:
                 "candidate_id": str(row["candidate__id"]),
                 "candidate": row["candidate__full_name"],
                 "party": row["candidate__party"],
+                "college": row["candidate__college"] or "",
+                "photo_url": f"/media/{row['candidate__photo']}" if row.get("candidate__photo") else None,
                 "votes": row["votes"],
             }
             for row in vote_counts
@@ -233,6 +236,8 @@ class ResultService:
                     "candidate_id": str(c.pk),
                     "candidate": c.full_name,
                     "party": c.party,
+                    "college": c.college or "",
+                    "photo_url": c.photo.url if c.photo else None,
                     "votes": 0,
                 }
             )
@@ -687,3 +692,152 @@ class VoterRollService:
             .annotate(count=Count("id"))
         )
         return {row["college_snapshot"]: row["count"] for row in counts}
+
+
+# ---------------------------------------------------------------------------
+# Registrar Batch Service
+# ---------------------------------------------------------------------------
+
+class RegistrarBatchService:
+    """
+    Manages system-level registrar import batches.
+
+    A registrar batch represents a school-year student roster dataset.
+    Elections reference a batch for voter roll matching.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def create_batch(
+        name: str,
+        academic_year: str = "",
+        description: str = "",
+        imported_by: str = "",
+    ) -> RegistrarImportBatch:
+        """Create a new registrar import batch."""
+        if not name or not name.strip():
+            raise VoterRollError("Batch name is required.")
+
+        batch = RegistrarImportBatch.objects.create(
+            name=name.strip(),
+            academic_year=academic_year.strip(),
+            description=description.strip(),
+            imported_by=imported_by,
+        )
+        logger.info("Registrar batch created: %s (%s)", batch.name, batch.pk)
+        return batch
+
+    @staticmethod
+    @transaction.atomic
+    def import_students_to_batch(
+        batch: RegistrarImportBatch,
+        rows: list[dict],
+    ) -> dict:
+        """
+        Import student records from CSV rows into the Student table,
+        tagged with this batch.
+
+        Args:
+            batch: The RegistrarImportBatch to associate with.
+            rows: List of dicts with keys: student_id, full_name, date_of_birth, college, course, year.
+
+        Returns:
+            Summary dict: {created, updated, skipped, errors}.
+        """
+        from apps.accounts.models import Student
+        from datetime import date
+
+        created = 0
+        updated = 0
+        skipped = 0
+        errors = []
+
+        for i, row in enumerate(rows):
+            sid = row.get("student_id", "").strip()
+            if not sid:
+                skipped += 1
+                continue
+
+            full_name = row.get("full_name", "").strip()
+            dob_raw = row.get("date_of_birth", "").strip()
+            college = row.get("college", "").strip()
+            course = row.get("course", "").strip()
+            year_raw = row.get("year", "1").strip()
+
+            if not full_name:
+                errors.append(f"Row {i+1}: missing full_name for {sid}")
+                continue
+
+            try:
+                dob = date.fromisoformat(dob_raw) if dob_raw else date(2000, 1, 1)
+            except (ValueError, TypeError):
+                errors.append(f"Row {i+1}: invalid date_of_birth for {sid}")
+                continue
+
+            try:
+                year_val = int(year_raw) if year_raw else 1
+            except (ValueError, TypeError):
+                year_val = 1
+
+            student, was_created = Student.objects.update_or_create(
+                student_id=sid,
+                defaults={
+                    "full_name": full_name,
+                    "date_of_birth": dob,
+                    "college": college,
+                    "course": course,
+                    "year": year_val,
+                },
+            )
+
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        batch.total_imported = created + updated
+        batch.save(update_fields=["total_imported", "updated_at"])
+
+        logger.info(
+            "Registrar batch import: batch=%s, created=%d, updated=%d, skipped=%d, errors=%d",
+            batch.pk, created, updated, skipped, len(errors),
+        )
+
+        return {
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors[:20],  # Limit error details
+        }
+
+    @staticmethod
+    def list_batches(include_archived: bool = False):
+        """Return queryset of registrar import batches."""
+        qs = RegistrarImportBatch.objects.all()
+        if not include_archived:
+            qs = qs.filter(status=RegistrarImportBatch.Status.ACTIVE)
+        return qs.order_by("-created_at")
+
+    @staticmethod
+    @transaction.atomic
+    def archive_batch(batch: RegistrarImportBatch) -> None:
+        """Archive a batch (soft-delete, still preserved for historical elections)."""
+        batch.status = RegistrarImportBatch.Status.ARCHIVED
+        batch.save(update_fields=["status", "updated_at"])
+        logger.info("Registrar batch archived: %s (%s)", batch.name, batch.pk)
+
+    @staticmethod
+    @transaction.atomic
+    def assign_batch_to_election(
+        election: Election,
+        batch: RegistrarImportBatch,
+    ) -> None:
+        """Link a registrar batch to an election."""
+        if election.is_voter_roll_finalized:
+            raise VoterRollError("Cannot change batch: voter roll is already finalized.")
+        election.registrar_batch = batch
+        election.save(update_fields=["registrar_batch", "updated_at"])
+        logger.info(
+            "Registrar batch %s assigned to election %s",
+            batch.pk, election.pk,
+        )

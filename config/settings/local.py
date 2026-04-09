@@ -48,6 +48,11 @@ INTERNAL_IPS += [".".join(ip.split(".")[:-1] + ["1"]) for ip in ips if "." in ip
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ---------------------------------------------------------------------------
+# Media – local dev uses filesystem
+# ---------------------------------------------------------------------------
+# MEDIA_ROOT and MEDIA_URL are inherited from base.py
+
+# ---------------------------------------------------------------------------
 # Logging - more verbose locally
 # ---------------------------------------------------------------------------
 LOGGING = copy.deepcopy(LOGGING)  # noqa: F405

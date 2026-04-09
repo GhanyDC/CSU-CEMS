@@ -2,44 +2,20 @@
 {% load static %}
 
 {% block title %}Admin Panel{% endblock %}
-
-{% block extra_head %}
-<style>
-    .cursor-pointer { cursor: pointer; }
-    .election-row:hover { background-color: rgba(0,0,0,.03); }
-    .check-pass { color: #198754; }
-    .check-fail { color: #dc3545; }
-    .badge-draft { background-color: #6c757d; }
-    .badge-active { background-color: #198754; }
-    .badge-closed { background-color: #ffc107; color: #000; }
-    .badge-published { background-color: #0dcaf0; color: #000; }
-</style>
-{% endblock %}
+{% block main_class %}{% endblock %}
 
 {% block navbar %}
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
-    <div class="container">
-        <a class="navbar-brand fw-bold" href="/admin-panel/">
-            <i class="bi bi-ballot-fill"></i> CEMS Admin
+<nav class="cems-navbar navbar">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{% url 'frontend:admin-panel' %}">
+            <span class="brand-icon">E</span>
+            CEMS <span class="d-none d-md-inline" style="font-weight:400;opacity:0.8;font-size:0.85rem;margin-left:0.25rem">Elections Management</span>
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link active" href="#" onclick="showElectionList(); return false;">
-                        <i class="bi bi-list-ul"></i> Elections
-                    </a>
-                </li>
-            </ul>
-            <div class="navbar-text text-white me-3">
-                <i class="bi bi-shield-lock"></i>
-                <span id="nav-admin-name">Admin</span>
-                <span class="badge bg-secondary ms-1" id="nav-admin-role"></span>
-            </div>
-            <button class="btn btn-outline-light btn-sm" id="admin-logout-btn">
-                <i class="bi bi-box-arrow-right"></i> Logout
+        <div class="d-flex align-items-center gap-3">
+            <span class="badge-role" id="nav-admin-role"></span>
+            <span class="d-none d-md-inline" id="nav-admin-name" style="color:#fff;font-size:0.85rem"></span>
+            <button class="btn btn-sm btn-outline-light" id="admin-logout-btn">
+                <i class="bi bi-box-arrow-right"></i><span class="d-none d-sm-inline ms-1">Logout</span>
             </button>
         </div>
     </div>
@@ -47,225 +23,180 @@
 {% endblock %}
 
 {% block content %}
-<!-- ── Election List View ──────────────────────────────────────────────── -->
-<div id="view-election-list">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="mb-0"><i class="bi bi-gear-fill text-dark"></i> Election Management</h2>
-            <p class="text-muted mb-0">Create and manage elections</p>
-        </div>
-        <div class="d-flex gap-2" id="create-buttons">
-            <button class="btn btn-primary" onclick="showCreateCampusModal()">
-                <i class="bi bi-plus-circle"></i> Create Campus Election
-            </button>
-            <button class="btn btn-outline-primary" onclick="showCreateCollegeModal()">
-                <i class="bi bi-building"></i> Create College Elections
-            </button>
-        </div>
+<div class="container-fluid px-3 px-md-4 py-3" id="admin-app">
+    <!-- Loading -->
+    <div id="admin-loading" class="text-center py-5">
+        <div class="cems-spinner mx-auto mb-3"></div>
+        <p class="text-muted">Loading admin panel&hellip;</p>
     </div>
 
-    <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                            <th>Schedule</th>
-                            <th>Voter Roll</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="election-list-body">
-                        <tr><td colspan="6" class="text-center text-muted py-4">Loading elections...</td></tr>
-                    </tbody>
-                </table>
+    <!-- ── Election List View ─────────────────────────────────────── -->
+    <div id="view-election-list" class="d-none">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-1">Manage Elections</h1>
+                <p class="text-muted mb-0">Create and manage campus &amp; college elections</p>
             </div>
+            <div class="d-flex gap-2 flex-wrap" id="create-buttons"></div>
         </div>
+        <!-- Search & filter -->
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+            <div class="search-wrapper flex-grow-1">
+                <i class="bi bi-search"></i>
+                <input type="text" class="cems-search" id="election-search" placeholder="Search elections&hellip;">
+            </div>
+            <select class="form-select form-select-sm" style="width:auto;border-radius:var(--cems-radius-sm)" id="filter-status">
+                <option value="">All Statuses</option>
+                <option value="draft">Draft</option><option value="active">Active</option>
+                <option value="closed">Closed</option><option value="published">Published</option>
+            </select>
+            <select class="form-select form-select-sm" style="width:auto;border-radius:var(--cems-radius-sm)" id="filter-type">
+                <option value="">All Types</option>
+                <option value="campus">Campus</option><option value="college">College</option>
+            </select>
+        </div>
+        <div class="cems-card" id="elections-list-card"><div id="election-list-body"></div></div>
+    </div>
+
+    <!-- ── Election Detail View ───────────────────────────────────── -->
+    <div id="view-election-detail" class="d-none">
+        <a href="#" class="text-decoration-none mb-3 d-inline-block" onclick="showElectionList(); return false;" style="color:var(--cems-primary)">
+            <i class="bi bi-arrow-left"></i> Back to Elections
+        </a>
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-2" id="detail-election-name"></h1>
+                <div class="d-flex gap-2 align-items-center flex-wrap" id="detail-badges"></div>
+            </div>
+            <div id="detail-primary-action"></div>
+        </div>
+        <!-- Tabs -->
+        <div class="cems-tabs mb-4" id="detailTabs">
+            <button class="cems-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+            <button class="cems-tab" data-tab="positions" onclick="switchTab('positions')">Positions &amp; Candidates</button>
+            <button class="cems-tab" data-tab="voterroll" onclick="switchTab('voterroll')">Voter Roll</button>
+            <button class="cems-tab" data-tab="lifecycle" onclick="switchTab('lifecycle')">Lifecycle</button>
+        </div>
+        <!-- Tab panels -->
+        <div id="tab-overview" class="tab-panel"></div>
+        <div id="tab-positions" class="tab-panel d-none"></div>
+        <div id="tab-voterroll" class="tab-panel d-none"></div>
+        <div id="tab-lifecycle" class="tab-panel d-none"></div>
+    </div>
+
+    <!-- ── Registrar Batches View ─────────────────────────────────── -->
+    <div id="view-batches" class="d-none">
+        <a href="#" class="text-decoration-none mb-3 d-inline-block" onclick="showElectionList(); return false;" style="color:var(--cems-primary)">
+            <i class="bi bi-arrow-left"></i> Back to Elections
+        </a>
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-1">Registrar Import Batches</h1>
+                <p class="text-muted mb-0">Manage reusable school-year student datasets</p>
+            </div>
+            <button class="btn btn-cems-primary" id="btn-create-batch" onclick="showCreateBatchModal()">
+                <i class="bi bi-plus-lg"></i> New Batch
+            </button>
+        </div>
+        <div class="cems-card"><div id="batches-list"></div></div>
     </div>
 </div>
 
-<!-- ── Election Detail View ────────────────────────────────────────────── -->
-<div id="view-election-detail" class="d-none">
-    <div class="d-flex align-items-center mb-4">
-        <button class="btn btn-outline-secondary me-3" onclick="showElectionList()">
-            <i class="bi bi-arrow-left"></i> Back
-        </button>
-        <div>
-            <h2 class="mb-0" id="detail-election-name"></h2>
-            <span class="badge" id="detail-election-status"></span>
-            <span class="badge bg-light text-dark" id="detail-election-type"></span>
-        </div>
-    </div>
-
-    <!-- Nav tabs -->
-    <ul class="nav nav-tabs mb-3" id="detailTabs">
-        <li class="nav-item">
-            <a class="nav-link active" data-bs-toggle="tab" href="#tab-overview">Overview</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#tab-candidates">
-                Positions &amp; Candidates
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#tab-voterroll">Voter Roll</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" data-bs-toggle="tab" href="#tab-readiness">Readiness</a>
-        </li>
-        <li class="nav-item" id="tab-lifecycle-nav">
-            <a class="nav-link" data-bs-toggle="tab" href="#tab-lifecycle">Lifecycle Actions</a>
-        </li>
-    </ul>
-
-    <div class="tab-content">
-        <!-- Overview tab -->
-        <div class="tab-pane fade show active" id="tab-overview">
-            <div class="row g-4">
-                <div class="col-md-6">
-                    <div class="card border-0 shadow-sm"><div class="card-body" id="overview-details"></div></div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card border-0 shadow-sm"><div class="card-body" id="overview-stats"></div></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Candidates tab -->
-        <div class="tab-pane fade" id="tab-candidates">
-            <div id="candidates-content"></div>
-        </div>
-
-        <!-- Voter Roll tab -->
-        <div class="tab-pane fade" id="tab-voterroll">
-            <div id="voterroll-content"></div>
-        </div>
-
-        <!-- Readiness tab -->
-        <div class="tab-pane fade" id="tab-readiness">
-            <div id="readiness-content"></div>
-        </div>
-
-        <!-- Lifecycle tab -->
-        <div class="tab-pane fade" id="tab-lifecycle">
-            <div id="lifecycle-content"></div>
-        </div>
-    </div>
-</div>
-
-<!-- ── Create Campus Election Modal ────────────────────────────────────── -->
+<!-- ── Modals ──────────────────────────────────────────────────────────── -->
+<!-- Create Election -->
 <div class="modal fade" id="createCampusModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Create Campus Election</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-muted">This will create a campus election with all constitutional positions:
-                President, Vice President, 12 Senators, 9 College Representatives, Party-List Representatives.</p>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Election Name</label>
-                    <input type="text" class="form-control" id="campus-name"
-                           placeholder="e.g. AY 2025-2026 SSC General Election">
-                </div>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Start Date &amp; Time</label>
-                        <input type="datetime-local" class="form-control" id="campus-start">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">End Date &amp; Time</label>
-                        <input type="datetime-local" class="form-control" id="campus-end">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitCreateCampus()">
-                    <i class="bi bi-check-lg"></i> Create Election
-                </button>
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Create Campus Election</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <p class="text-muted small">Creates a campus election with all constitutional positions: President, VP, 12 Senators, 9 College Reps, Party-List.</p>
+            <div class="mb-3"><label class="form-label fw-semibold">Election Name</label><input type="text" class="form-control" id="campus-name" placeholder="e.g. AY 2025-2026 SSC General Election"></div>
+            <div class="row g-2">
+                <div class="col-6"><label class="form-label fw-semibold">Start</label><input type="datetime-local" class="form-control" id="campus-start"></div>
+                <div class="col-6"><label class="form-label fw-semibold">End</label><input type="datetime-local" class="form-control" id="campus-end"></div>
             </div>
         </div>
-    </div>
+        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateCampus()">Create Election</button></div>
+    </div></div>
 </div>
-
-<!-- ── Create College Elections Modal ──────────────────────────────────── -->
+<!-- Create College Elections -->
 <div class="modal fade" id="createCollegeModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-building"></i> Create College Elections</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-muted">This will create <strong>9 separate college elections</strong> (one per college),
-                each with Governor, Vice Governor, and 8 Board Member positions.</p>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Name Prefix</label>
-                    <input type="text" class="form-control" id="college-prefix"
-                           placeholder="e.g. AY 2025-2026 College Election">
-                    <small class="text-muted">Each election will be named: [prefix] – [College Name]</small>
-                </div>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Start Date &amp; Time</label>
-                        <input type="datetime-local" class="form-control" id="college-start">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">End Date &amp; Time</label>
-                        <input type="datetime-local" class="form-control" id="college-end">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitCreateCollege()">
-                    <i class="bi bi-check-lg"></i> Create 9 Elections
-                </button>
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Create College Elections</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <p class="text-muted small">Creates <strong>9 separate college elections</strong> (one per college), each with Governor, Vice-Governor, and 8 Board Members.</p>
+            <div class="mb-3"><label class="form-label fw-semibold">Name Prefix</label><input type="text" class="form-control" id="college-prefix" placeholder="e.g. AY 2025-2026 College Election"><small class="text-muted">Each will be named: [prefix] – [College]</small></div>
+            <div class="row g-2">
+                <div class="col-6"><label class="form-label fw-semibold">Start</label><input type="datetime-local" class="form-control" id="college-start"></div>
+                <div class="col-6"><label class="form-label fw-semibold">End</label><input type="datetime-local" class="form-control" id="college-end"></div>
             </div>
         </div>
-    </div>
+        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateCollege()">Create 9 Elections</button></div>
+    </div></div>
 </div>
-
-<!-- ── Add Candidate Modal ─────────────────────────────────────────────── -->
+<!-- Add Candidate -->
 <div class="modal fade" id="addCandidateModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-person-plus"></i> Add Candidate</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Position</label>
-                    <select class="form-select" id="candidate-position"></select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Full Name</label>
-                    <input type="text" class="form-control" id="candidate-name" placeholder="Full name">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">Party (optional)</label>
-                    <input type="text" class="form-control" id="candidate-party" placeholder="Party affiliation">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-semibold">College (optional)</label>
-                    <input type="text" class="form-control" id="candidate-college"
-                           placeholder="Required for College Representatives">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitAddCandidate()">
-                    <i class="bi bi-check-lg"></i> Add Candidate
-                </button>
-            </div>
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Add Candidate</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <div class="mb-3"><label class="form-label fw-semibold">Position</label><select class="form-select" id="candidate-position"></select></div>
+            <div class="mb-3"><label class="form-label fw-semibold">Full Name</label><input type="text" class="form-control" id="candidate-name"></div>
+            <div class="mb-3"><label class="form-label fw-semibold">Party (optional)</label><input type="text" class="form-control" id="candidate-party"></div>
+            <div class="mb-3"><label class="form-label fw-semibold">College</label><input type="text" class="form-control" id="candidate-college" placeholder="Required for College Representatives"></div>
+            <div class="mb-3"><label class="form-label fw-semibold">Platform / Bio</label><textarea class="form-control" id="candidate-platform" rows="2"></textarea></div>
         </div>
-    </div>
+        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitAddCandidate()">Add Candidate</button></div>
+    </div></div>
+</div>
+<!-- Upload Photo -->
+<div class="modal fade" id="uploadPhotoModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Upload Photo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body text-center">
+            <img id="photo-preview" src="" alt="" class="candidate-photo d-none mb-2" style="width:96px;height:96px">
+            <input type="file" class="form-control" id="photo-input" accept="image/jpeg,image/png,image/webp">
+            <small class="text-muted">Max 2 MB. JPEG, PNG, or WebP.</small>
+        </div>
+        <div class="modal-footer"><button class="btn btn-cems-outline btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary btn-sm" onclick="submitPhotoUpload()">Upload</button></div>
+    </div></div>
+</div>
+<!-- Confirm dialog -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="confirm-title">Confirm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><p id="confirm-message"></p></div>
+        <div class="modal-footer"><button class="btn btn-cems-outline btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-danger btn-sm" id="confirm-btn">Confirm</button></div>
+    </div></div>
+</div>
+<!-- Create Batch -->
+<div class="modal fade" id="createBatchModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">New Registrar Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <div class="mb-3"><label class="form-label fw-semibold">Name</label><input type="text" class="form-control" id="batch-name" placeholder="e.g., AY 2025-2026 First Semester"></div>
+            <div class="mb-3"><label class="form-label fw-semibold">Academic Year</label><input type="text" class="form-control" id="batch-year" placeholder="2025-2026"></div>
+            <div class="mb-3"><label class="form-label fw-semibold">Description</label><textarea class="form-control" id="batch-desc" rows="2"></textarea></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateBatch()">Create</button></div>
+    </div></div>
+</div>
+<!-- Import Batch CSV -->
+<div class="modal fade" id="importBatchModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Import Registrar Data</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <p class="text-muted small">Upload CSV: student_id, full_name, date_of_birth, college, course, year</p>
+            <input type="file" class="form-control" id="batch-csv-input" accept=".csv">
+        </div>
+        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitBatchImport()">Import</button></div>
+    </div></div>
+</div>
+<!-- Assign Batch -->
+<div class="modal fade" id="assignBatchModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Select Registrar Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="batch-select-list"></div></div>
+        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button></div>
+    </div></div>
 </div>
 
 {% endblock %}
@@ -273,215 +204,452 @@
 {% block extra_scripts %}
 {{ bootstrap_admin|json_script:"cems-bootstrap-admin" }}
 <script>
-// ── Global state ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+//  CEMS Admin Panel – Builder.io-inspired SPA
+// ══════════════════════════════════════════════════════════════════════════
 let adminUser = null;
 let currentElectionDetail = null;
+let allElections = [];
+let currentTab = 'overview';
 
-// ── Initialization ────────────────────────────────────────────────────────
-(function() {
+// ── Helpers ──────────────────────────────────────────────────────────────
+function esc(s) { return CEMS.escapeHtml(s); }
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+function fmtDate(iso) { return iso ? new Date(iso).toLocaleDateString(undefined,{dateStyle:'medium'}) : '—'; }
+function fmtDateTime(iso) { return iso ? new Date(iso).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : '—'; }
+function statusBadge(s) { return `<span class="badge-status badge-${s}">${cap(s)}</span>`; }
+function typeBadge(t) { return `<span class="badge-type badge-${t}">${cap(t)}</span>`; }
+function apiPost(url, body) { return CEMS.api(url, { method: 'POST', body: JSON.stringify(body) }); }
+
+// ── Initialization ───────────────────────────────────────────────────────
+(function init() {
     const el = document.getElementById('cems-bootstrap-admin');
-    if (el) {
-        try { adminUser = JSON.parse(el.textContent); } catch(e) {}
-    }
-    if (!adminUser) {
-        window.location.href = '/election-admin/login/';
-        return;
-    }
+    if (el) { try { adminUser = JSON.parse(el.textContent); } catch(e) {} }
+    if (!adminUser) { window.location.href = '/election-admin/login/'; return; }
 
     document.getElementById('nav-admin-name').textContent = adminUser.display_name;
     document.getElementById('nav-admin-role').textContent = adminUser.role_display;
-
-    // Hide create buttons for read-only roles
-    if (adminUser.is_read_only) {
-        document.getElementById('create-buttons').classList.add('d-none');
-    }
 
     document.getElementById('admin-logout-btn').addEventListener('click', async () => {
         try { await CEMS.api('/api/admin/auth/logout/', { method: 'POST' }); } catch(e) {}
         window.location.href = '/election-admin/login/';
     });
 
+    document.getElementById('election-search').addEventListener('input', renderElectionList);
+    document.getElementById('filter-status').addEventListener('change', renderElectionList);
+    document.getElementById('filter-type').addEventListener('change', renderElectionList);
+
     loadElectionList();
 })();
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-function esc(s) { return CEMS.escapeHtml(s); }
-
-function statusBadge(status) {
-    const cls = { draft:'badge-draft', active:'badge-active', closed:'badge-closed', published:'badge-published' }[status] || 'bg-secondary';
-    return `<span class="badge ${cls}">${(status||'').toUpperCase()}</span>`;
-}
-
-function fmtDate(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' });
-}
-
-function apiPost(url, body) {
-    return CEMS.api(url, { method: 'POST', body: JSON.stringify(body) });
-}
-
-// ── Election List ─────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+//  ELECTION LIST
+// ══════════════════════════════════════════════════════════════════════════
 function showElectionList() {
     document.getElementById('view-election-list').classList.remove('d-none');
     document.getElementById('view-election-detail').classList.add('d-none');
+    document.getElementById('view-batches').classList.add('d-none');
     currentElectionDetail = null;
-    loadElectionList();
+    renderCreateButtons();
+    renderElectionList();
 }
 
 async function loadElectionList() {
     try {
         const res = await CEMS.api('/api/admin/elections/setup/list/');
         if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
-
-        const tbody = document.getElementById('election-list-body');
-        if (res.elections.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No elections yet. Create one to get started.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = res.elections.map(e => `
-            <tr class="election-row cursor-pointer" onclick="openElection('${e.id}')">
-                <td class="fw-semibold">${esc(e.name)}</td>
-                <td><span class="badge ${e.election_type==='campus'?'bg-primary':'bg-info text-dark'}">${e.election_type}</span></td>
-                <td>${statusBadge(e.status)}</td>
-                <td><small>${fmtDate(e.start_time)} – ${fmtDate(e.end_time)}</small></td>
-                <td>${e.voter_roll_finalized
-                    ? '<span class="text-success"><i class="bi bi-check-circle-fill"></i> Finalized</span>'
-                    : '<span class="text-muted"><i class="bi bi-circle"></i> Pending</span>'}</td>
-                <td><i class="bi bi-chevron-right text-muted"></i></td>
-            </tr>
-        `).join('');
-    } catch (err) {
-        CEMS.showToast('Failed to load elections: ' + err.message, 'danger');
-    }
+        allElections = res.elections;
+        showElectionList();
+    } catch (err) { CEMS.showToast('Failed to load elections: ' + err.message, 'danger'); }
+    document.getElementById('admin-loading').classList.add('d-none');
 }
 
-// ── Election Detail ───────────────────────────────────────────────────────
+function renderCreateButtons() {
+    const canCreate = adminUser.is_eb_head || adminUser.is_operator;
+    let html = '';
+    if (canCreate) {
+        html += `<button class="btn btn-cems-outline btn-sm" onclick="showBatchesView()"><i class="bi bi-database"></i> Registrar Batches</button>`;
+        html += `<button class="btn btn-cems-outline" onclick="showCreateCollegeModal()"><i class="bi bi-plus-lg"></i> College Elections</button>`;
+        html += `<button class="btn btn-cems-primary" onclick="showCreateCampusModal()"><i class="bi bi-plus-lg"></i> Campus Election</button>`;
+    }
+    document.getElementById('create-buttons').innerHTML = html;
+}
+
+function renderElectionList() {
+    const search = document.getElementById('election-search').value.toLowerCase();
+    const sf = document.getElementById('filter-status').value;
+    const tf = document.getElementById('filter-type').value;
+    const filtered = allElections.filter(e => {
+        if (search && !e.name.toLowerCase().includes(search) && !e.election_type.toLowerCase().includes(search)) return false;
+        if (sf && e.status !== sf) return false;
+        if (tf && e.election_type !== tf) return false;
+        return true;
+    });
+    const body = document.getElementById('election-list-body');
+    if (!filtered.length) {
+        body.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No elections found</p></div>';
+        return;
+    }
+    body.innerHTML = filtered.map(e => `
+        <div class="election-card" onclick="openElection('${e.id}')">
+            <div style="flex:1;min-width:0">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="election-card-title">${esc(e.name)}</span>
+                    ${statusBadge(e.status)} ${typeBadge(e.election_type)}
+                </div>
+                <div class="election-card-meta">
+                    <span><i class="bi bi-calendar3"></i> ${fmtDate(e.start_time)} – ${fmtDate(e.end_time)}</span>
+                    <span><i class="bi bi-check2-circle"></i> Voter Roll: ${e.voter_roll_finalized ? 'Finalized' : 'Pending'}</span>
+                </div>
+            </div>
+            <button class="btn btn-cems-outline btn-sm">Manage <i class="bi bi-chevron-right"></i></button>
+        </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ELECTION DETAIL
+// ══════════════════════════════════════════════════════════════════════════
 async function openElection(electionId) {
     try {
         const res = await CEMS.api(`/api/admin/elections/setup/${electionId}/`);
         if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
         currentElectionDetail = res.election;
+        currentTab = 'overview';
         renderElectionDetail();
-    } catch (err) {
-        CEMS.showToast('Failed to load election: ' + err.message, 'danger');
-    }
+    } catch (err) { CEMS.showToast('Error: ' + err.message, 'danger'); }
 }
 
 function renderElectionDetail() {
     const el = currentElectionDetail;
     document.getElementById('view-election-list').classList.add('d-none');
+    document.getElementById('view-batches').classList.add('d-none');
     document.getElementById('view-election-detail').classList.remove('d-none');
 
     document.getElementById('detail-election-name').textContent = el.name;
-    document.getElementById('detail-election-status').className = 'badge ' +
-        ({ draft:'badge-draft', active:'badge-active', closed:'badge-closed', published:'badge-published' }[el.status] || 'bg-secondary');
-    document.getElementById('detail-election-status').textContent = el.status.toUpperCase();
-    document.getElementById('detail-election-type').textContent = el.election_type + (el.college ? ` – ${el.college}` : '');
-
-    renderOverview(el);
-    renderCandidates(el);
-    renderVoterRoll(el);
-    loadReadiness(el.id);
-    renderLifecycle(el);
-
-    // Reset to overview tab
-    const firstTab = document.querySelector('#detailTabs .nav-link.active');
-    if (firstTab) firstTab.click();
+    document.getElementById('detail-badges').innerHTML = `
+        ${statusBadge(el.status)} ${typeBadge(el.election_type)}
+        ${el.college ? `<span style="color:var(--cems-text-secondary);font-size:0.85rem">${esc(el.college)}</span>` : ''}
+        <span style="color:var(--cems-text-secondary);font-size:0.85rem"><i class="bi bi-calendar3"></i> ${fmtDate(el.start_time)} – ${fmtDate(el.end_time)}</span>`;
+    renderPrimaryAction();
+    switchTab(currentTab);
 }
 
-function renderOverview(el) {
-    const vr = el.voter_roll_summary;
-    document.getElementById('overview-details').innerHTML = `
-        <h5 class="card-title"><i class="bi bi-info-circle text-primary"></i> Details</h5>
-        <ul class="list-group list-group-flush">
-            <li class="list-group-item d-flex justify-content-between"><span>Type</span><strong>${el.election_type}${el.college ? ' – '+esc(el.college) : ''}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Status</span>${statusBadge(el.status)}</li>
-            <li class="list-group-item d-flex justify-content-between"><span>Start</span><strong>${fmtDate(el.start_time)}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>End</span><strong>${fmtDate(el.end_time)}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Positions</span><strong>${el.positions.length}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Candidates</span><strong>${el.positions.reduce((s,p)=>s+p.candidates.length,0)}</strong></li>
-        </ul>`;
-
-    document.getElementById('overview-stats').innerHTML = `
-        <h5 class="card-title"><i class="bi bi-people text-success"></i> Voter Roll</h5>
-        <ul class="list-group list-group-flush">
-            <li class="list-group-item d-flex justify-content-between"><span>Records Imported</span><strong>${vr.total}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Matched</span><strong class="text-success">${vr.matched}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Unmatched</span><strong class="text-danger">${vr.unmatched}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Approved Voters</span><strong class="text-primary">${vr.approved}</strong></li>
-            <li class="list-group-item d-flex justify-content-between"><span>Finalized</span>
-                ${el.voter_roll_finalized
-                    ? `<span class="text-success"><i class="bi bi-check-circle-fill"></i> Yes (${esc(el.voter_roll_finalized_by)})</span>`
-                    : '<span class="text-warning"><i class="bi bi-clock"></i> No</span>'}</li>
-        </ul>`;
-}
-
-// ── Candidates Tab ────────────────────────────────────────────────────────
-function renderCandidates(el) {
-    const isDraft = el.status === 'draft';
-    const canEdit = !adminUser.is_read_only;
-
+function renderPrimaryAction() {
+    const el = currentElectionDetail;
     let html = '';
-    if (isDraft && canEdit) {
-        html += `<div class="mb-3">
-            <button class="btn btn-primary btn-sm" onclick="showAddCandidateModal()">
-                <i class="bi bi-person-plus"></i> Add Candidate
-            </button>
-        </div>`;
+    if (adminUser.is_eb_head) {
+        if (el.status === 'draft')
+            html = `<button class="btn btn-cems-primary" onclick="lifecycleAction('start')"><i class="bi bi-play-fill"></i> Start Election</button>`;
+        else if (el.status === 'active')
+            html = `<button class="btn btn-cems-danger" onclick="lifecycleAction('close')"><i class="bi bi-stop-fill"></i> Close Election</button>`;
+        else if (el.status === 'closed')
+            html = `<button class="btn btn-cems-success" onclick="lifecycleAction('publish')"><i class="bi bi-megaphone"></i> Publish Results</button>`;
     }
+    document.getElementById('detail-primary-action').innerHTML = html;
+}
 
-    for (const pos of el.positions) {
-        html += `<div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white d-flex justify-content-between">
-                <strong>${esc(pos.title)}</strong>
-                <span class="text-muted">${pos.category_display} · max ${pos.max_selections}</span>
-            </div>`;
+// ── Tab switching ────────────────────────────────────────────────────────
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('#detailTabs .cems-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('d-none'));
+    document.getElementById('tab-' + tab)?.classList.remove('d-none');
+    if (tab === 'overview') renderOverview();
+    else if (tab === 'positions') renderPositions();
+    else if (tab === 'voterroll') renderVoterRoll();
+    else if (tab === 'lifecycle') renderLifecycle();
+}
 
-        if (pos.candidates.length === 0) {
-            html += `<div class="card-body text-muted"><em>No candidates yet</em></div>`;
-        } else {
-            html += '<ul class="list-group list-group-flush">';
-            for (const c of pos.candidates) {
-                const activeIcon = c.is_active
-                    ? '<i class="bi bi-check-circle-fill text-success"></i>'
-                    : '<i class="bi bi-x-circle-fill text-danger"></i> <span class="text-muted">(inactive)</span>';
-                let actions = '';
-                if (isDraft && canEdit) {
-                    const toggleLabel = c.is_active ? 'Deactivate' : 'Activate';
-                    actions = `<button class="btn btn-outline-secondary btn-sm" onclick="toggleCandidate('${c.id}', ${!c.is_active})">${toggleLabel}</button>`;
-                }
-                html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        ${activeIcon}
-                        <strong class="ms-2">${esc(c.full_name)}</strong>
-                        ${c.party ? '<span class="text-muted ms-2">'+esc(c.party)+'</span>' : ''}
-                        ${c.college ? '<small class="text-muted ms-2">('+esc(c.college)+')</small>' : ''}
-                    </div>
-                    <div>${actions}</div>
-                </li>`;
-            }
-            html += '</ul>';
+// ── Overview Tab ─────────────────────────────────────────────────────────
+function renderOverview() {
+    const el = currentElectionDetail;
+    const vr = el.voter_roll_summary;
+    const totalCands = el.positions.reduce((s, p) => s + p.candidates.filter(c => c.is_active).length, 0);
+    let html = `
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Status</div><div class="metric-value">${cap(el.status)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Period</div><div class="metric-value" style="font-size:1rem;font-weight:600">${fmtDate(el.start_time)}</div><div class="metric-sub">to ${fmtDate(el.end_time)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved Voters</div><div class="metric-value text-success">${(vr.approved||0).toLocaleString()}</div><div class="metric-sub">${vr.matched||0} matched</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Positions</div><div class="metric-value">${el.positions.length}</div><div class="metric-sub">${totalCands} candidates</div></div></div>
+        </div>`;
+    // Voter summary
+    if (vr.approved > 0) {
+        html += `<div class="cems-card p-4 mb-4"><h5 class="mb-3">Voter Summary</h5>
+            <div class="row g-3">
+                <div class="col-4"><div class="metric-label">Total Imported</div><div class="fw-bold fs-5" style="color:var(--cems-primary)">${(vr.total||0).toLocaleString()}</div></div>
+                <div class="col-4"><div class="metric-label">Matched</div><div class="fw-bold fs-5">${(vr.matched||0).toLocaleString()}</div></div>
+                <div class="col-4"><div class="metric-label">Approved</div><div class="fw-bold fs-5" style="color:var(--cems-success)">${(vr.approved||0).toLocaleString()}</div></div>
+            </div></div>`;
+    }
+    // Readiness checklist (draft only)
+    if (el.status === 'draft') { html += '<div id="readiness-content"></div>'; }
+    document.getElementById('tab-overview').innerHTML = html;
+    if (el.status === 'draft') loadReadiness(el.id);
+}
+
+async function loadReadiness(electionId) {
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${electionId}/readiness/`);
+        if (!res.success) return;
+        let html = `<div class="cems-card p-4"><h5 class="mb-3"><i class="bi bi-clipboard-check"></i> Pre-flight Checklist
+            ${res.ready ? '<span class="badge-status badge-active ms-2">Ready</span>' : '<span class="badge-status badge-draft ms-2">Not Ready</span>'}</h5>`;
+        for (const c of res.checks) {
+            const icon = c.passed
+                ? '<i class="bi bi-check-circle-fill" style="color:var(--cems-success)"></i>'
+                : '<i class="bi bi-x-circle-fill" style="color:var(--cems-danger)"></i>';
+            html += `<div class="d-flex align-items-center gap-2 py-2 border-bottom"><span>${icon}</span><span class="fw-medium">${esc(c.name)}</span><span class="text-muted ms-auto" style="font-size:0.8rem">${esc(c.detail)}</span></div>`;
+        }
+        if (res.blocking_issues.length) {
+            html += '<div class="alert mt-3 mb-0" style="background:var(--cems-warning-bg);border:1px solid var(--cems-warning);color:var(--cems-warning);border-radius:var(--cems-radius-sm)"><strong>Blocking:</strong><ul class="mb-0 ps-3">';
+            for (const i of res.blocking_issues) html += `<li>${esc(i)}</li>`;
+            html += '</ul></div>';
         }
         html += '</div>';
-    }
-
-    document.getElementById('candidates-content').innerHTML = html;
+        const target = document.getElementById('readiness-content');
+        if (target) target.innerHTML = html;
+    } catch (e) { console.error(e); }
 }
 
+// ── Positions & Candidates Tab ───────────────────────────────────────────
+function renderPositions() {
+    const el = currentElectionDetail;
+    const isDraft = el.status === 'draft';
+    const canEdit = !adminUser.is_read_only;
+    let html = '';
+    if (isDraft && canEdit) {
+        html += `<div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 mb-0">Positions &amp; Candidates</h2>
+            <button class="btn btn-cems-primary btn-sm" onclick="showAddCandidateModal()"><i class="bi bi-plus-lg"></i> Add Candidate</button>
+        </div>`;
+    } else {
+        html += `<h2 class="h5 mb-3">Positions &amp; Candidates</h2>`;
+    }
+    if (!el.positions.length) {
+        html += '<div class="empty-state"><i class="bi bi-list-check"></i><p>No positions configured</p></div>';
+        document.getElementById('tab-positions').innerHTML = html;
+        return;
+    }
+    for (const pos of el.positions) {
+        const active = pos.candidates.filter(c => c.is_active);
+        html += `<div class="position-section mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div><span class="position-title">${esc(pos.title)}</span><span class="position-rule ms-2">Choose ${pos.max_selections}</span></div>
+                <span class="text-muted" style="font-size:0.85rem">${active.length} active${pos.candidates.length>active.length?' / '+pos.candidates.length+' total':''}</span>
+            </div><div class="row g-2">`;
+        if (!active.length) {
+            html += '<div class="col-12 text-muted text-center py-2" style="font-size:0.85rem">No candidates</div>';
+        }
+        for (const c of active) {
+            const photo = c.photo_url
+                ? `<img src="${c.photo_url}" class="candidate-photo" alt="" style="width:48px;height:48px">`
+                : `<div class="candidate-photo-placeholder" style="width:48px;height:48px;font-size:1rem"><i class="bi bi-person"></i></div>`;
+            html += `<div class="col-12 col-md-6">
+                <div class="d-flex align-items-center gap-3 p-2 border rounded" style="border-radius:var(--cems-radius-sm)!important">
+                    ${photo}
+                    <div style="flex:1;min-width:0">
+                        <div class="fw-semibold" style="font-size:0.9rem">${esc(c.full_name)}</div>
+                        <div class="text-muted" style="font-size:0.75rem">${esc(c.party||'')}${c.college ? ' &bull; '+esc(c.college) : ''}</div>
+                        ${c.platform_text ? `<div class="text-truncate text-muted" style="font-size:0.7rem;margin-top:2px">${esc(c.platform_text)}</div>` : ''}
+                    </div>
+                    ${isDraft && canEdit ? `<div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation();openPhotoUpload('${c.id}')" title="Photo"><i class="bi bi-camera"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation();confirmDeleteCandidate('${c.id}','${esc(c.full_name)}')" title="Remove"><i class="bi bi-trash"></i></button>
+                    </div>` : ''}
+                </div></div>`;
+        }
+        // Show inactive candidates collapsed
+        const inactive = pos.candidates.filter(c => !c.is_active);
+        if (inactive.length && isDraft && canEdit) {
+            for (const c of inactive) {
+                html += `<div class="col-12 col-md-6 opacity-50">
+                    <div class="d-flex align-items-center gap-3 p-2 border rounded" style="border-radius:var(--cems-radius-sm)!important">
+                        <div class="candidate-photo-placeholder" style="width:48px;height:48px;font-size:1rem;opacity:0.5"><i class="bi bi-person-slash"></i></div>
+                        <div style="flex:1"><div class="fw-semibold" style="font-size:0.9rem">${esc(c.full_name)} <small class="text-danger">(inactive)</small></div></div>
+                        <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();toggleCandidate('${c.id}',true)" title="Reactivate"><i class="bi bi-arrow-counterclockwise"></i></button>
+                    </div></div>`;
+            }
+        }
+        html += `</div></div>`;
+    }
+    document.getElementById('tab-positions').innerHTML = html;
+}
+
+// ── Voter Roll Tab ───────────────────────────────────────────────────────
+async function renderVoterRoll() {
+    const el = currentElectionDetail;
+    const canEdit = !adminUser.is_read_only && !el.voter_roll_finalized && el.status === 'draft';
+
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${el.id}/voter-roll/summary/`);
+        if (!res.success) { document.getElementById('tab-voterroll').innerHTML = '<div class="text-danger">Failed to load voter roll.</div>'; return; }
+
+        let html = '';
+        // Batch indicator
+        html += `<div class="d-flex flex-wrap gap-2 mb-3">
+            ${el.registrar_batch_name ? `<span class="badge bg-light text-dark border"><i class="bi bi-database"></i> Batch: ${esc(el.registrar_batch_name)}</span>` : ''}
+            ${canEdit ? `<button class="btn btn-cems-outline btn-sm" onclick="showAssignBatchModal()"><i class="bi bi-database"></i> ${el.registrar_batch_name ? 'Change' : 'Select'} Registrar Batch</button>` : ''}
+        </div>`;
+
+        // Metrics
+        const ms = res.match_summary || {};
+        const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '—';
+        html += `<div class="row g-3 mb-4">
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Total Imported</div><div class="metric-value text-primary">${(ms.total||0).toLocaleString()}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Matched</div><div class="metric-value">${(ms.matched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.matched,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Unmatched</div><div class="metric-value" style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.unmatched,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved</div><div class="metric-value text-success">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">${pct(res.approved_count,ms.total)}</div></div></div>
+        </div>`;
+
+        // Actions
+        if (canEdit) {
+            html += `<div class="d-flex gap-2 mb-4 flex-wrap">
+                <button class="btn btn-cems-outline btn-sm" onclick="uploadCSV()"><i class="bi bi-upload"></i> Import Verification CSV</button>
+                <button class="btn btn-cems-outline btn-sm" onclick="generateVoterRoll()"><i class="bi bi-gear"></i> Generate Voter Roll</button>
+                ${adminUser.is_eb_head && (res.approved_count||0)>0 ? `<button class="btn btn-cems-primary btn-sm" onclick="finalizeVoterRoll()"><i class="bi bi-lock"></i> Finalize Voter Roll</button>` : ''}
+            </div>`;
+        }
+        if (res.finalized) {
+            html += `<div class="alert mb-4" style="background:var(--cems-success-bg);border:1px solid var(--cems-success);color:var(--cems-success);border-radius:var(--cems-radius-sm)"><i class="bi bi-check-circle-fill"></i> Voter roll finalized by ${esc(res.finalized_by||'')} on ${fmtDateTime(res.finalized_at)}</div>`;
+        }
+
+        // College breakdown
+        const colleges = res.approved_by_college || {};
+        if (Object.keys(colleges).length) {
+            html += `<div class="cems-card p-4 mb-3"><h5 class="mb-3">Approved Voters by College</h5>
+                <table class="cems-table"><thead><tr><th>College</th><th>Approved</th></tr></thead><tbody>`;
+            Object.entries(colleges).sort((a,b) => a[0].localeCompare(b[0])).forEach(([col,cnt]) => {
+                html += `<tr><td>${esc(col)}</td><td><strong>${cnt}</strong></td></tr>`;
+            });
+            html += '</tbody></table></div>';
+        }
+
+        // Unmatched records
+        if (res.unmatched_records?.length) {
+            html += `<div class="cems-card p-4"><h5 class="mb-3">Unmatched Records <span class="badge bg-warning text-dark">${res.unmatched_total}</span></h5>
+                <table class="cems-table"><thead><tr><th>Student ID</th><th>Name</th><th>College</th></tr></thead><tbody>`;
+            for (const r of res.unmatched_records) {
+                html += `<tr><td>${esc(r.student_id_input)}</td><td>${esc(r.full_name_input)}</td><td>${esc(r.college_input)}</td></tr>`;
+            }
+            html += '</tbody></table>';
+            if (res.unmatched_total > res.unmatched_records.length)
+                html += `<small class="text-muted">Showing ${res.unmatched_records.length} of ${res.unmatched_total}</small>`;
+            html += '</div>';
+        }
+        document.getElementById('tab-voterroll').innerHTML = html;
+    } catch (err) {
+        document.getElementById('tab-voterroll').innerHTML = '<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>Error loading voter roll</p></div>';
+    }
+}
+
+// ── Lifecycle Tab ────────────────────────────────────────────────────────
+function renderLifecycle() {
+    const el = currentElectionDetail;
+    const states = ['draft','active','closed','published'];
+    const idx = states.indexOf(el.status);
+    const labels = { draft:'Draft', active:'Active (Voting Open)', closed:'Closed (Tallying)', published:'Published' };
+    const descs = {
+        draft: 'Set up positions, candidates, and voter roll. Start when ready.',
+        active: 'Students can cast ballots. No edits to positions or candidates.',
+        closed: 'Voting ended. Results computed and ready for review.',
+        published: 'Results visible to all eligible students. Permanent.'
+    };
+    const actions = { draft:'start', active:'close', closed:'publish' };
+    const actionLabels = { start:'Start Election', close:'Close Election', publish:'Publish Results' };
+
+    let html = `<div class="cems-card p-4">
+        <h5 class="mb-1">Election Lifecycle</h5>
+        <p class="text-muted mb-4" style="font-size:0.85rem">Manage election status transitions</p>`;
+
+    states.forEach((s, i) => {
+        const completed = i < idx;
+        const isCurrent = i === idx;
+        const cls = completed ? 'completed' : (isCurrent ? 'current' : 'disabled');
+        html += `<div class="lifecycle-step ${cls}">
+            <div><div class="lifecycle-step-title">${labels[s]}</div><div class="lifecycle-step-desc">${descs[s]}</div></div>
+            ${completed ? '<span style="color:var(--cems-success)"><i class="bi bi-check-circle-fill"></i></span>' : ''}
+            ${isCurrent && actions[s] && adminUser.is_eb_head ? `<button class="btn btn-cems-primary btn-sm" onclick="lifecycleAction('${actions[s]}')">${actionLabels[actions[s]]}</button>` : ''}
+        </div>`;
+    });
+
+    // Timeline bar
+    html += `<div class="mt-4"><h6 class="mb-2">Progress</h6><div class="d-flex align-items-center gap-2">`;
+    states.forEach((s, i) => {
+        const done = i <= idx;
+        html += `<div style="display:flex;align-items:center;gap:4px"><span style="width:14px;height:14px;border-radius:50%;background:${done?'var(--cems-success)':'#D1D5DB'};display:inline-block"></span><span style="font-size:0.8rem;color:${done?'var(--cems-text)':'var(--cems-text-secondary)'}">${cap(s)}</span></div>`;
+        if (i < states.length - 1) html += `<div style="flex:1;height:2px;background:${i<idx?'var(--cems-success)':'#D1D5DB'}"></div>`;
+    });
+    html += '</div></div></div>';
+    document.getElementById('tab-lifecycle').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ACTIONS
+// ══════════════════════════════════════════════════════════════════════════
+// ── Lifecycle ────────────────────────────────────────────────────────────
+function lifecycleAction(action) {
+    const msgs = {
+        start: 'Start this election? Voting will open and positions/candidates will be locked.',
+        close: 'Close this election? No more ballots will be accepted.',
+        publish: 'Publish results? This makes results visible to students and is permanent.'
+    };
+    showConfirm('Confirm ' + cap(action), msgs[action], async () => {
+        try {
+            const res = await apiPost(`/api/admin/elections/${action}/`, { election_id: currentElectionDetail.id });
+            if (res.success) { CEMS.showToast(res.message || `Election ${action}ed!`, 'success'); await openElection(currentElectionDetail.id); }
+            else CEMS.showToast(res.error, 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    });
+}
+
+// ── Create Campus ────────────────────────────────────────────────────────
+function showCreateCampusModal() {
+    document.getElementById('campus-name').value = '';
+    document.getElementById('campus-start').value = '';
+    document.getElementById('campus-end').value = '';
+    new bootstrap.Modal(document.getElementById('createCampusModal')).show();
+}
+async function submitCreateCampus() {
+    const name = document.getElementById('campus-name').value;
+    const start = document.getElementById('campus-start').value;
+    const end = document.getElementById('campus-end').value;
+    if (!name || !start || !end) { CEMS.showToast('All fields required.', 'warning'); return; }
+    try {
+        const res = await apiPost('/api/admin/elections/setup/create-campus/', { name, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString() });
+        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('createCampusModal')).hide(); await loadElectionList(); }
+        else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Create College ───────────────────────────────────────────────────────
+function showCreateCollegeModal() {
+    document.getElementById('college-prefix').value = '';
+    document.getElementById('college-start').value = '';
+    document.getElementById('college-end').value = '';
+    new bootstrap.Modal(document.getElementById('createCollegeModal')).show();
+}
+async function submitCreateCollege() {
+    const prefix = document.getElementById('college-prefix').value;
+    const start = document.getElementById('college-start').value;
+    const end = document.getElementById('college-end').value;
+    if (!prefix || !start || !end) { CEMS.showToast('All fields required.', 'warning'); return; }
+    try {
+        const res = await apiPost('/api/admin/elections/setup/create-college/', { name_prefix: prefix, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString() });
+        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('createCollegeModal')).hide(); await loadElectionList(); }
+        else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ── Add Candidate ────────────────────────────────────────────────────────
 function showAddCandidateModal() {
     if (!currentElectionDetail) return;
     const sel = document.getElementById('candidate-position');
-    sel.innerHTML = currentElectionDetail.positions.map(p =>
-        `<option value="${p.id}">${esc(p.title)} (${p.category_display})</option>`
-    ).join('');
+    sel.innerHTML = currentElectionDetail.positions.map(p => `<option value="${p.id}">${esc(p.title)} (${p.category_display})</option>`).join('');
     document.getElementById('candidate-name').value = '';
     document.getElementById('candidate-party').value = '';
     document.getElementById('candidate-college').value = '';
+    document.getElementById('candidate-platform').value = '';
     new bootstrap.Modal(document.getElementById('addCandidateModal')).show();
 }
-
 async function submitAddCandidate() {
     const el = currentElectionDetail;
     const body = {
@@ -492,13 +660,8 @@ async function submitAddCandidate() {
     };
     try {
         const res = await apiPost(`/api/admin/elections/setup/${el.id}/candidates/add/`, body);
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            bootstrap.Modal.getInstance(document.getElementById('addCandidateModal')).hide();
-            await openElection(el.id);
-        } else {
-            CEMS.showToast(res.error, 'danger');
-        }
+        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('addCandidateModal')).hide(); await openElection(el.id); }
+        else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
@@ -506,291 +669,195 @@ async function toggleCandidate(candidateId, newActive) {
     const el = currentElectionDetail;
     try {
         const res = await apiPost(`/api/admin/elections/setup/${el.id}/candidates/${candidateId}/update/`, { is_active: newActive });
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            await openElection(el.id);
-        } else {
-            CEMS.showToast(res.error, 'danger');
-        }
+        if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(el.id); }
+        else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-// ── Voter Roll Tab ────────────────────────────────────────────────────────
-function renderVoterRoll(el) {
-    const canEdit = !adminUser.is_read_only;
-    const isDraft = el.status === 'draft';
-    const finalized = el.voter_roll_finalized;
-    const vr = el.voter_roll_summary;
-
-    let html = `<div class="row g-4">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white"><h6 class="mb-0">Import &amp; Match Status</h6></div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between">Total Imported<strong>${vr.total}</strong></li>
-                        <li class="list-group-item d-flex justify-content-between">Matched<strong class="text-success">${vr.matched}</strong></li>
-                        <li class="list-group-item d-flex justify-content-between">Unmatched<strong class="text-danger">${vr.unmatched}</strong></li>
-                        <li class="list-group-item d-flex justify-content-between">Approved Voters<strong class="text-primary">${vr.approved}</strong></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white"><h6 class="mb-0">Actions</h6></div>
-                <div class="card-body">`;
-
-    if (finalized) {
-        html += `<div class="alert alert-success mb-0"><i class="bi bi-lock-fill"></i> Voter roll is <strong>finalized</strong> by ${esc(el.voter_roll_finalized_by)}.</div>`;
-    } else if (canEdit && isDraft) {
-        html += `
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Import Verification CSV</label>
-                <input type="file" class="form-control" id="csv-upload" accept=".csv">
-                <small class="text-muted">CSV must have a <code>student_id</code> column</small>
-            </div>
-            <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="uploadCSV()">
-                <i class="bi bi-upload"></i> Upload &amp; Import
-            </button>
-            <button class="btn btn-outline-success btn-sm mb-2 w-100" onclick="generateVoterRoll()">
-                <i class="bi bi-arrow-repeat"></i> Generate Voter Roll
-            </button>`;
-
-        if (adminUser.is_eb_head) {
-            html += `<button class="btn btn-warning btn-sm w-100" onclick="finalizeVoterRoll()">
-                <i class="bi bi-lock-fill"></i> Finalize Voter Roll (EB Head)
-            </button>`;
-        } else {
-            html += `<div class="alert alert-info mb-0 mt-2"><small><i class="bi bi-info-circle"></i> Only the Electoral Board Head can finalize the voter roll.</small></div>`;
-        }
-    } else {
-        html += `<div class="text-muted">No actions available.</div>`;
-    }
-
-    html += `</div></div></div></div>`;
-
-    // Unmatched records section
-    html += `<div class="mt-3"><button class="btn btn-outline-secondary btn-sm" onclick="loadUnmatched()">
-        <i class="bi bi-search"></i> View Unmatched Records
-    </button></div>
-    <div id="unmatched-list" class="mt-2"></div>`;
-
-    document.getElementById('voterroll-content').innerHTML = html;
+// ── Photo Upload ─────────────────────────────────────────────────────────
+let photoTargetId = null;
+function openPhotoUpload(candidateId) {
+    photoTargetId = candidateId;
+    document.getElementById('photo-input').value = '';
+    document.getElementById('photo-preview').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('uploadPhotoModal')).show();
 }
-
-async function uploadCSV() {
-    const el = currentElectionDetail;
-    const fileInput = document.getElementById('csv-upload');
-    if (!fileInput.files[0]) { CEMS.showToast('Select a CSV file first.', 'warning'); return; }
-
-    const formData = new FormData();
-    formData.append('csv_file', fileInput.files[0]);
-
+document.getElementById('photo-input')?.addEventListener('change', function() {
+    if (this.files[0]) {
+        const r = new FileReader();
+        r.onload = e => { const p = document.getElementById('photo-preview'); p.src = e.target.result; p.classList.remove('d-none'); };
+        r.readAsDataURL(this.files[0]);
+    }
+});
+async function submitPhotoUpload() {
+    const file = document.getElementById('photo-input').files[0];
+    if (!file) { CEMS.showToast('Select a file', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('photo', file);
     try {
-        const response = await fetch(`/api/admin/elections/setup/${el.id}/voter-roll/import/`, {
-            method: 'POST',
-            credentials: 'same-origin',
+        const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/candidates/${photoTargetId}/photo/`, {
+            method: 'POST', credentials: 'same-origin',
             headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
-            body: formData,
+            body: fd
         });
         const res = await response.json();
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            await openElection(el.id);
-        } else {
-            CEMS.showToast(res.error, 'danger');
-        }
+        if (res.success) { CEMS.showToast('Photo uploaded', 'success'); bootstrap.Modal.getInstance(document.getElementById('uploadPhotoModal')).hide(); await openElection(currentElectionDetail.id); }
+        else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+function confirmDeleteCandidate(id, name) {
+    showConfirm('Remove Candidate', `Deactivate "${name}" from this election?`, async () => {
+        try {
+            const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/candidates/${id}/delete/`, {});
+            if (res.success) { CEMS.showToast('Candidate removed', 'success'); await openElection(currentElectionDetail.id); }
+            else CEMS.showToast(res.error, 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    });
+}
+
+// ── Voter Roll Actions ───────────────────────────────────────────────────
+function uploadCSV() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.csv';
+    input.onchange = async () => {
+        if (!input.files[0]) return;
+        const fd = new FormData();
+        fd.append('csv_file', input.files[0]);
+        try {
+            const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/voter-roll/import/`, {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+                body: fd
+            });
+            const res = await response.json();
+            if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
+            else CEMS.showToast(res.error, 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    };
+    input.click();
 }
 
 async function generateVoterRoll() {
-    const el = currentElectionDetail;
     try {
-        const res = await apiPost(`/api/admin/elections/setup/${el.id}/voter-roll/generate/`, {});
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            await openElection(el.id);
-        } else { CEMS.showToast(res.error, 'danger'); }
+        const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/voter-roll/generate/`, {});
+        if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
+        else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-async function finalizeVoterRoll() {
-    if (!confirm('Finalize the voter roll? This cannot be undone.')) return;
-    const el = currentElectionDetail;
-    try {
-        const res = await apiPost(`/api/admin/elections/setup/${el.id}/voter-roll/finalize/`, {});
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            await openElection(el.id);
-        } else { CEMS.showToast(res.error, 'danger'); }
-    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+function finalizeVoterRoll() {
+    showConfirm('Finalize Voter Roll', 'Lock the voter roll? No more voters can be added after this.', async () => {
+        try {
+            const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/voter-roll/finalize/`, {});
+            if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
+            else CEMS.showToast(res.error, 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    });
 }
 
-async function loadUnmatched() {
-    const el = currentElectionDetail;
+// ══════════════════════════════════════════════════════════════════════════
+//  REGISTRAR BATCHES
+// ══════════════════════════════════════════════════════════════════════════
+let batchList = [];
+async function showBatchesView() {
+    document.getElementById('view-election-list').classList.add('d-none');
+    document.getElementById('view-election-detail').classList.add('d-none');
+    document.getElementById('view-batches').classList.remove('d-none');
     try {
-        const res = await CEMS.api(`/api/admin/elections/setup/${el.id}/voter-roll/summary/`);
-        if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
-
-        const div = document.getElementById('unmatched-list');
-        if (res.unmatched_records.length === 0) {
-            div.innerHTML = '<div class="text-muted">No unmatched records.</div>';
-            return;
-        }
-        let html = `<div class="card border-0 shadow-sm"><div class="card-body p-0">
-            <table class="table table-sm mb-0"><thead><tr><th>Student ID</th><th>Name</th><th>College</th></tr></thead><tbody>`;
-        for (const r of res.unmatched_records) {
-            html += `<tr><td>${esc(r.student_id_input)}</td><td>${esc(r.full_name_input)}</td><td>${esc(r.college_input)}</td></tr>`;
-        }
-        html += `</tbody></table></div></div>`;
-        if (res.unmatched_total > res.unmatched_records.length) {
-            html += `<small class="text-muted">Showing ${res.unmatched_records.length} of ${res.unmatched_total} unmatched records.</small>`;
-        }
-        div.innerHTML = html;
-    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+        const res = await CEMS.api('/api/admin/elections/setup/registrar-batches/');
+        batchList = res.batches || [];
+        renderBatches();
+    } catch (e) { CEMS.showToast(e.message, 'danger'); }
 }
 
-// ── Readiness Tab ─────────────────────────────────────────────────────────
-async function loadReadiness(electionId) {
-    try {
-        const res = await CEMS.api(`/api/admin/elections/setup/${electionId}/readiness/`);
-        if (!res.success) { document.getElementById('readiness-content').innerHTML = '<div class="text-danger">Failed to load.</div>'; return; }
-
-        let html = `<div class="card border-0 shadow-sm"><div class="card-body">
-            <h5>${res.ready ? '<i class="bi bi-check-circle-fill text-success"></i> Ready to Start' : '<i class="bi bi-exclamation-triangle-fill text-warning"></i> Not Ready'}</h5>
-            <ul class="list-group list-group-flush">`;
-
-        for (const c of res.checks) {
-            const icon = c.passed ? '<i class="bi bi-check-circle-fill check-pass"></i>' : '<i class="bi bi-x-circle-fill check-fail"></i>';
-            html += `<li class="list-group-item d-flex justify-content-between"><div>${icon} ${esc(c.name)}</div><small class="text-muted">${esc(c.detail)}</small></li>`;
-        }
-        html += '</ul>';
-
-        if (res.blocking_issues.length > 0) {
-            html += '<div class="alert alert-warning mt-3 mb-0"><strong>Blocking Issues:</strong><ul class="mb-0">';
-            for (const issue of res.blocking_issues) {
-                html += `<li>${esc(issue)}</li>`;
-            }
-            html += '</ul></div>';
-        }
-        html += '</div></div>';
-        document.getElementById('readiness-content').innerHTML = html;
-    } catch (err) {
-        document.getElementById('readiness-content').innerHTML = '<div class="text-danger">Error loading readiness.</div>';
-    }
-}
-
-// ── Lifecycle Tab ─────────────────────────────────────────────────────────
-function renderLifecycle(el) {
-    const isHead = adminUser.is_eb_head;
-
-    // Show lifecycle tab only for EB Head
-    document.getElementById('tab-lifecycle-nav').classList.toggle('d-none', !isHead);
-
-    if (!isHead) {
-        document.getElementById('lifecycle-content').innerHTML = '';
+function renderBatches() {
+    if (!batchList.length) {
+        document.getElementById('batches-list').innerHTML = '<div class="empty-state"><i class="bi bi-database"></i><p>No registrar batches yet</p></div>';
         return;
     }
-
-    const st = el.status;
-    document.getElementById('lifecycle-content').innerHTML = `
-        <div class="card border-0 shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-diagram-3"></i> Lifecycle Transitions</h5>
-                <div class="d-flex align-items-center gap-2 mb-4">
-                    ${['draft','active','closed','published'].map(s =>
-                        `<span class="badge rounded-pill fs-6 px-3 py-2 ${s===st?'bg-primary':'bg-secondary'}">${s.toUpperCase()}</span>
-                         ${s!=='published'?'<i class="bi bi-arrow-right text-muted"></i>':''}`
-                    ).join('')}
-                </div>
-                <div class="d-grid gap-3">
-                    <button class="btn btn-success btn-lg" ${st!=='draft'?'disabled':''} onclick="lifecycleAction('start')">
-                        <i class="bi bi-play-fill"></i> Start Election (DRAFT → ACTIVE)
-                    </button>
-                    <button class="btn btn-warning btn-lg" ${st!=='active'?'disabled':''} onclick="lifecycleAction('close')">
-                        <i class="bi bi-stop-fill"></i> Close Election (ACTIVE → CLOSED)
-                    </button>
-                    <button class="btn btn-info btn-lg" ${st!=='closed'?'disabled':''} onclick="lifecycleAction('publish')">
-                        <i class="bi bi-megaphone-fill"></i> Publish Results (CLOSED → PUBLISHED)
-                    </button>
-                </div>
-            </div>
-        </div>`;
+    document.getElementById('batches-list').innerHTML = batchList.map(b => `
+        <div class="election-card" style="cursor:default">
+            <div style="flex:1"><div class="election-card-title">${esc(b.name)}</div>
+            <div class="election-card-meta"><span><i class="bi bi-mortarboard"></i> ${esc(b.academic_year||'—')}</span><span><i class="bi bi-people"></i> ${b.total_imported} students</span><span><i class="bi bi-person"></i> By: ${esc(b.imported_by||'—')}</span></div></div>
+            <button class="btn btn-cems-outline btn-sm" onclick="openBatchImport('${b.id}')"><i class="bi bi-upload"></i> Import CSV</button>
+        </div>`).join('');
 }
 
-async function lifecycleAction(action) {
-    const el = currentElectionDetail;
-    const msgs = {
-        start: 'Start the election? Students will be able to vote.',
-        close: 'Close the election? No more votes will be accepted.',
-        publish: 'Publish results? This is permanent.',
-    };
-    if (!confirm(msgs[action])) return;
+function showCreateBatchModal() {
+    document.getElementById('batch-name').value = '';
+    document.getElementById('batch-year').value = '';
+    document.getElementById('batch-desc').value = '';
+    new bootstrap.Modal(document.getElementById('createBatchModal')).show();
+}
 
+async function submitCreateBatch() {
+    const name = document.getElementById('batch-name').value.trim();
+    if (!name) { CEMS.showToast('Name required', 'warning'); return; }
     try {
-        const res = await apiPost(`/api/admin/elections/${action}/`, { election_id: el.id });
-        if (res.success) {
-            CEMS.showToast(`Election ${action}ed successfully!`, 'success');
-            await openElection(el.id);
-        } else {
-            CEMS.showToast(res.error, 'danger');
-        }
-    } catch (err) { CEMS.showToast(err.message, 'danger'); }
-}
-
-// ── Create Campus Election ────────────────────────────────────────────────
-function showCreateCampusModal() {
-    document.getElementById('campus-name').value = '';
-    document.getElementById('campus-start').value = '';
-    document.getElementById('campus-end').value = '';
-    new bootstrap.Modal(document.getElementById('createCampusModal')).show();
-}
-
-async function submitCreateCampus() {
-    const name = document.getElementById('campus-name').value;
-    const start = document.getElementById('campus-start').value;
-    const end = document.getElementById('campus-end').value;
-
-    if (!name || !start || !end) { CEMS.showToast('Please fill all fields.', 'warning'); return; }
-
-    try {
-        const res = await apiPost('/api/admin/elections/setup/create-campus/', {
-            name, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString()
+        const res = await apiPost('/api/admin/elections/setup/registrar-batches/create/', {
+            name, academic_year: document.getElementById('batch-year').value, description: document.getElementById('batch-desc').value
         });
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            bootstrap.Modal.getInstance(document.getElementById('createCampusModal')).hide();
-            await loadElectionList();
-        } else { CEMS.showToast(res.error, 'danger'); }
+        if (res.success) { CEMS.showToast('Batch created', 'success'); bootstrap.Modal.getInstance(document.getElementById('createBatchModal')).hide(); await showBatchesView(); }
+        else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-// ── Create College Elections ──────────────────────────────────────────────
-function showCreateCollegeModal() {
-    document.getElementById('college-prefix').value = '';
-    document.getElementById('college-start').value = '';
-    document.getElementById('college-end').value = '';
-    new bootstrap.Modal(document.getElementById('createCollegeModal')).show();
+let importBatchId = null;
+function openBatchImport(batchId) {
+    importBatchId = batchId;
+    document.getElementById('batch-csv-input').value = '';
+    new bootstrap.Modal(document.getElementById('importBatchModal')).show();
 }
 
-async function submitCreateCollege() {
-    const prefix = document.getElementById('college-prefix').value;
-    const start = document.getElementById('college-start').value;
-    const end = document.getElementById('college-end').value;
-
-    if (!prefix || !start || !end) { CEMS.showToast('Please fill all fields.', 'warning'); return; }
-
+async function submitBatchImport() {
+    const file = document.getElementById('batch-csv-input').files[0];
+    if (!file) { CEMS.showToast('Select a CSV', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('csv_file', file);
     try {
-        const res = await apiPost('/api/admin/elections/setup/create-college/', {
-            name_prefix: prefix, start_time: new Date(start).toISOString(), end_time: new Date(end).toISOString()
+        const response = await fetch(`/api/admin/elections/setup/registrar-batches/${importBatchId}/import/`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: fd
         });
-        if (res.success) {
-            CEMS.showToast(res.message, 'success');
-            bootstrap.Modal.getInstance(document.getElementById('createCollegeModal')).hide();
-            await loadElectionList();
-        } else { CEMS.showToast(res.error, 'danger'); }
+        const res = await response.json();
+        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('importBatchModal')).hide(); await showBatchesView(); }
+        else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+async function showAssignBatchModal() {
+    try {
+        const res = await CEMS.api('/api/admin/elections/setup/registrar-batches/');
+        const bl = res.batches || [];
+        if (!bl.length) { CEMS.showToast('No batches available. Create one first.', 'warning'); return; }
+        document.getElementById('batch-select-list').innerHTML = bl.map(b => `
+            <div class="election-card" style="cursor:pointer" onclick="assignBatch('${b.id}')">
+                <div><div class="fw-semibold">${esc(b.name)}</div><div class="text-muted" style="font-size:0.8rem">${esc(b.academic_year||'')} &bull; ${b.total_imported} students</div></div>
+            </div>`).join('');
+        new bootstrap.Modal(document.getElementById('assignBatchModal')).show();
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+async function assignBatch(batchId) {
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/registrar-batch/assign/`, { batch_id: batchId });
+        if (res.success) { CEMS.showToast('Batch assigned', 'success'); bootstrap.Modal.getInstance(document.getElementById('assignBatchModal')).hide(); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
+        else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  CONFIRM MODAL
+// ══════════════════════════════════════════════════════════════════════════
+function showConfirm(title, message, onConfirm) {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    const btn = document.getElementById('confirm-btn');
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    btn.onclick = () => { modal.hide(); onConfirm(); };
+    modal.show();
 }
 </script>
 {% endblock %}

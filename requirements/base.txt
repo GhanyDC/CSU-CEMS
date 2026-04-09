@@ -12,5 +12,8 @@ python-decouple>=3.8
 # Utilities
 django-extensions>=3.2.3
 
+# Image processing (candidate photos)
+Pillow>=10.0.0
+
 # Logging
 python-json-logger>=2.0.7

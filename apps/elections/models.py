@@ -1,5 +1,6 @@
 """
-Elections models — Election, Position, Candidate, EligibleVoter, and VerificationRecord.
+Elections models — Election, Position, Candidate, EligibleVoter, VerificationRecord,
+and RegistrarImportBatch.
 
 Models are structured to match the campus constitutional structure:
   Executive Branch : President, Vice President
@@ -10,10 +11,61 @@ College elections mirror the campus pattern within a single college.
 """
 import uuid
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
 
 from apps.elections.constants import OFFICIAL_COLLEGES
+
+
+def candidate_photo_path(instance, filename):
+    """Generate upload path for candidate photos using UUID to prevent path traversal."""
+    return f"candidate_photos/{instance.position.election_id}/{uuid.uuid4().hex}.jpg"
+
+
+class RegistrarImportBatch(models.Model):
+    """
+    System-level registrar import batch representing a school-year dataset.
+
+    Reusable across elections. Each election references a batch to determine
+    which registrar dataset to match verification records against.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(
+        max_length=255,
+        help_text="Descriptive name, e.g. 'AY 2025-2026 First Semester'.",
+    )
+    academic_year = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Academic year label, e.g. '2025-2026'.",
+    )
+    description = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    total_imported = models.PositiveIntegerField(default=0)
+    imported_by = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Registrar Import Batch"
+        verbose_name_plural = "Registrar Import Batches"
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.get_status_display()})"
 
 
 class Election(models.Model):
@@ -42,6 +94,14 @@ class Election(models.Model):
         blank=True,
         default="",
         help_text="Required for college elections. Must be an official college name.",
+    )
+    registrar_batch = models.ForeignKey(
+        RegistrarImportBatch,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="elections",
+        help_text="The registrar import batch used for voter roll matching.",
     )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
@@ -174,6 +234,18 @@ class Candidate(models.Model):
         blank=True,
         null=True,
         help_text="College affiliation — required for House College Representatives.",
+    )
+    photo = models.ImageField(
+        upload_to=candidate_photo_path,
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "webp"])],
+        help_text="Campaign/profile photo (max 2 MB, JPG/PNG/WebP).",
+    )
+    platform_text = models.TextField(
+        blank=True,
+        default="",
+        help_text="Short candidate platform or description.",
     )
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -150,6 +150,10 @@ def student_login(request: Any) -> JsonResponse:
         details="Authentication successful.",
     )
 
+    # Clear any lingering Django auth session (admin) to prevent session cross-contamination
+    if request.user.is_authenticated:
+        logout(request)
+
     # Store authenticated student in session
     request.session["authenticated_student_id"] = str(student.id)
     request.session["student_id"] = student.student_id
@@ -166,6 +170,7 @@ def student_login(request: Any) -> JsonResponse:
 
 
 @require_POST
+@csrf_protect
 def student_logout(request: Any) -> JsonResponse:
     """
     End the current session.
@@ -260,6 +265,10 @@ def admin_login(request: Any) -> JsonResponse:
     # Log in via Django auth (sets session)
     login(request, user)
 
+    # Clear any lingering student session keys to prevent session cross-contamination
+    request.session.pop("authenticated_student_id", None)
+    request.session.pop("student_id", None)
+
     AuditService.log_event(
         student_id_attempted=username,
         event_type=AuditLog.EventType.ADMIN_LOGIN_ATTEMPT,
@@ -282,6 +291,7 @@ def admin_login(request: Any) -> JsonResponse:
 
 
 @require_POST
+@csrf_protect
 def admin_logout(request: Any) -> JsonResponse:
     """
     End the admin session.

@@ -1,155 +1,434 @@
 /* ============================================================
-   CEMS — Campus Election Management System  •  Custom Styles
+   CEMS — Campus Election Management System  •  Design System
+   Inspired by Builder.io admin concepts - modern, trustworthy
    ============================================================ */
+
+:root {
+    --cems-primary: #6B1D2A;
+    --cems-primary-light: #8B2E3E;
+    --cems-primary-dark: #4A1019;
+    --cems-accent: #D4A847;
+    --cems-accent-dark: #B8922E;
+    --cems-bg: #F7F8FA;
+    --cems-card: #FFFFFF;
+    --cems-border: #E5E7EB;
+    --cems-text: #1F2937;
+    --cems-text-secondary: #6B7280;
+    --cems-success: #059669;
+    --cems-success-bg: #ECFDF5;
+    --cems-warning: #D97706;
+    --cems-warning-bg: #FFFBEB;
+    --cems-danger: #DC2626;
+    --cems-danger-bg: #FEF2F2;
+    --cems-info: #2563EB;
+    --cems-info-bg: #EFF6FF;
+    --cems-draft: #6B7280;
+    --cems-active: #059669;
+    --cems-closed: #DC2626;
+    --cems-published: #059669;
+    --cems-radius: 0.75rem;
+    --cems-radius-sm: 0.5rem;
+    --cems-shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+    --cems-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --cems-shadow-lg: 0 4px 16px rgba(0,0,0,0.1);
+    --cems-transition: 0.2s ease;
+}
 
 /* ---------- Global ---------- */
 body {
-    background-color: #f5f7fb;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: var(--cems-bg);
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--cems-text);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
+main { flex: 1; }
 
-main {
-    flex: 1;
+/* ---------- Typography ---------- */
+h1, h2, h3, h4, h5, h6 { font-weight: 600; color: var(--cems-text); }
+.text-muted { color: var(--cems-text-secondary) !important; }
+
+/* ---------- Admin Navbar ---------- */
+.cems-navbar {
+    background: var(--cems-primary);
+    padding: 0.5rem 1.5rem;
+    box-shadow: var(--cems-shadow);
+}
+.cems-navbar .navbar-brand {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.cems-navbar .brand-icon {
+    width: 32px; height: 32px;
+    background: var(--cems-accent);
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.9rem;
+    color: #fff;
+}
+.cems-navbar .nav-link { color: rgba(255,255,255,0.8); font-size: 0.9rem; }
+.cems-navbar .nav-link:hover { color: #fff; }
+.cems-navbar .badge-role { background: rgba(255,255,255,0.15); color: #fff; font-size: 0.75rem; padding: 0.3rem 0.6rem; border-radius: 0.25rem; }
+
+/* ---------- Status Badges ---------- */
+.badge-status { font-size: 0.75rem; padding: 0.3rem 0.7rem; border-radius: 1rem; font-weight: 600; letter-spacing: 0.02em; }
+.badge-draft { background: #F3F4F6; color: #4B5563; }
+.badge-active { background: var(--cems-success-bg); color: var(--cems-success); }
+.badge-closed { background: var(--cems-danger-bg); color: var(--cems-danger); }
+.badge-published { background: var(--cems-success-bg); color: var(--cems-success); }
+.badge-type { font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; background: #F3F4F6; color: #6B7280; font-weight: 500; }
+.badge-campus { background: #EDE9FE; color: #7C3AED; }
+.badge-college { background: #DBEAFE; color: #2563EB; }
+
+/* ---------- Cards ---------- */
+.cems-card {
+    background: var(--cems-card);
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius);
+    box-shadow: var(--cems-shadow-sm);
+    transition: box-shadow var(--cems-transition);
+}
+.cems-card:hover { box-shadow: var(--cems-shadow); }
+.cems-card-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--cems-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
-/* ---------- Login Page ---------- */
+/* ---------- Election List Cards ---------- */
+.election-card {
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+    transition: all var(--cems-transition);
+    border-bottom: 1px solid var(--cems-border);
+}
+.election-card:last-child { border-bottom: none; }
+.election-card:hover { background: #F9FAFB; }
+.election-card-title { font-weight: 600; font-size: 1rem; margin-bottom: 0.125rem; }
+.election-card-meta { font-size: 0.8rem; color: var(--cems-text-secondary); display: flex; gap: 1.5rem; margin-top: 0.25rem; }
+.election-card-meta span { display: flex; align-items: center; gap: 0.25rem; }
+
+/* ---------- Tabs (Admin Detail) ---------- */
+.cems-tabs {
+    background: #F3F4F6;
+    border-radius: var(--cems-radius);
+    padding: 0.25rem;
+    display: flex;
+    gap: 0.25rem;
+}
+.cems-tab {
+    flex: 1;
+    padding: 0.6rem 1rem;
+    text-align: center;
+    border-radius: var(--cems-radius-sm);
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: var(--cems-text-secondary);
+    cursor: pointer;
+    transition: all var(--cems-transition);
+    border: none;
+    background: transparent;
+}
+.cems-tab:hover { color: var(--cems-text); background: rgba(255,255,255,0.5); }
+.cems-tab.active { background: var(--cems-card); color: var(--cems-text); box-shadow: var(--cems-shadow-sm); }
+
+/* ---------- Metric Cards ---------- */
+.metric-card {
+    background: var(--cems-card);
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius);
+    padding: 1.25rem;
+    text-align: left;
+}
+.metric-card .metric-label { font-size: 0.8rem; color: var(--cems-text-secondary); margin-bottom: 0.25rem; font-weight: 500; }
+.metric-card .metric-value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+.metric-card .metric-sub { font-size: 0.75rem; color: var(--cems-text-secondary); margin-top: 0.25rem; }
+.metric-value.text-primary { color: var(--cems-primary) !important; }
+.metric-value.text-success { color: var(--cems-success) !important; }
+.metric-value.text-warning { color: var(--cems-warning) !important; }
+.metric-value.text-danger { color: var(--cems-danger) !important; }
+
+/* ---------- Buttons ---------- */
+.btn-cems-primary {
+    background: var(--cems-primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--cems-radius-sm);
+    padding: 0.5rem 1.25rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all var(--cems-transition);
+}
+.btn-cems-primary:hover { background: var(--cems-primary-light); color: #fff; }
+.btn-cems-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-cems-outline {
+    background: transparent;
+    color: var(--cems-text);
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius-sm);
+    padding: 0.5rem 1.25rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all var(--cems-transition);
+}
+.btn-cems-outline:hover { background: #F3F4F6; border-color: #D1D5DB; }
+.btn-cems-danger {
+    background: var(--cems-danger);
+    color: #fff;
+    border: none;
+    border-radius: var(--cems-radius-sm);
+    padding: 0.5rem 1.25rem;
+    font-weight: 500;
+}
+.btn-cems-danger:hover { background: #B91C1C; color: #fff; }
+.btn-cems-success {
+    background: var(--cems-success);
+    color: #fff;
+    border: none;
+    border-radius: var(--cems-radius-sm);
+    padding: 0.5rem 1.25rem;
+    font-weight: 500;
+}
+.btn-cems-success:hover { background: #047857; color: #fff; }
+
+/* ---------- Lifecycle Timeline ---------- */
+.lifecycle-step {
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all var(--cems-transition);
+}
+.lifecycle-step.current { border-color: var(--cems-primary); border-left: 4px solid var(--cems-primary); background: #FDF2F4; }
+.lifecycle-step.completed { border-color: var(--cems-success); border-left: 4px solid var(--cems-success); background: var(--cems-success-bg); }
+.lifecycle-step.disabled { opacity: 0.5; }
+.lifecycle-step-title { font-weight: 600; font-size: 0.95rem; }
+.lifecycle-step-desc { font-size: 0.8rem; color: var(--cems-text-secondary); margin-top: 0.125rem; }
+
+/* ---------- Login Pages ---------- */
 .login-page {
-    background: linear-gradient(135deg, #0d6efd 0%, #0a4dd0 50%, #083b9e 100%);
+    background: linear-gradient(135deg, var(--cems-primary) 0%, var(--cems-primary-dark) 100%);
     min-height: 100vh;
 }
-
 .login-card {
-    border-radius: 1rem;
-    animation: slideUp 0.5s ease-out;
+    border-radius: var(--cems-radius);
+    animation: slideUp 0.4s ease-out;
+    border: none;
 }
-
 .login-icon {
-    width: 80px;
-    height: 80px;
+    width: 72px; height: 72px;
     margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #e8f0fe;
+    background: #FDF2F4;
     border-radius: 50%;
 }
-
 @keyframes slideUp {
-    from { opacity: 0; transform: translateY(30px); }
+    from { opacity: 0; transform: translateY(20px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ---------- Candidate Cards ---------- */
+/* ---------- Candidate Cards (Ballot) ---------- */
 .candidate-card {
     cursor: pointer;
-    transition: all 0.2s ease;
-    border-radius: 0.75rem !important;
+    transition: all var(--cems-transition);
+    border: 2px solid var(--cems-border);
+    border-radius: var(--cems-radius) !important;
+    padding: 1rem;
+    position: relative;
 }
-
 .candidate-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(13, 110, 253, 0.15);
-    border-color: #0d6efd !important;
+    border-color: var(--cems-primary);
+    box-shadow: var(--cems-shadow);
 }
-
 .candidate-card.selected {
-    border-color: #198754 !important;
-    background-color: #f0fdf4;
-    box-shadow: 0 0 0 2px #198754;
+    border-color: var(--cems-success) !important;
+    background: var(--cems-success-bg);
 }
-
-.candidate-check {
+.candidate-card .candidate-check {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 0.5rem;
+    right: 0.5rem;
+    color: var(--cems-success);
     font-size: 1.25rem;
     display: none;
 }
-
-.candidate-card.selected .candidate-check {
-    display: block;
+.candidate-card.selected .candidate-check { display: block; }
+.candidate-photo {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--cems-border);
 }
-
-.candidate-avatar {
-    width: 60px;
-    height: 60px;
-    margin: 0 auto;
+.candidate-photo-placeholder {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: #F3F4F6;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #e8f0fe;
-    border-radius: 50%;
+    color: var(--cems-text-secondary);
+    font-size: 1.5rem;
+    border: 2px solid var(--cems-border);
 }
 
-/* ---------- Progress Bars (Results) ---------- */
-.progress {
-    border-radius: 0.5rem;
-    background-color: #e9ecef;
+/* ---------- Position Sections ---------- */
+.position-section {
+    border-left: 4px solid var(--cems-primary);
+    background: var(--cems-card);
+    border-radius: var(--cems-radius);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--cems-shadow-sm);
 }
+.position-title { font-weight: 600; font-size: 1.1rem; }
+.position-rule { font-size: 0.8rem; color: var(--cems-text-secondary); }
 
-.progress-bar {
-    border-radius: 0.5rem;
+/* ---------- Results ---------- */
+.result-bar-container { margin-bottom: 0.25rem; }
+.result-bar {
+    height: 28px;
+    border-radius: 0.375rem;
+    background: #E5E7EB;
+    overflow: hidden;
+}
+.result-bar-fill {
+    height: 100%;
+    border-radius: 0.375rem;
+    background: var(--cems-primary);
+    display: flex;
+    align-items: center;
+    padding: 0 0.5rem;
+    color: #fff;
+    font-size: 0.75rem;
     font-weight: 600;
-    font-size: 0.85rem;
+    transition: width 0.5s ease;
+}
+.result-bar-fill.winner { background: var(--cems-success); }
+
+/* ---------- Table ---------- */
+.cems-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.cems-table th { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--cems-text-secondary); letter-spacing: 0.05em; padding: 0.75rem 1rem; border-bottom: 2px solid var(--cems-border); }
+.cems-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--cems-border); font-size: 0.875rem; }
+.cems-table tbody tr:hover { background: #F9FAFB; }
+
+/* ---------- Search/Filter ---------- */
+.cems-search {
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius);
+    padding: 0.6rem 1rem 0.6rem 2.5rem;
+    width: 100%;
+    font-size: 0.875rem;
+    background: var(--cems-card);
+    transition: border-color var(--cems-transition);
+}
+.cems-search:focus { border-color: var(--cems-primary); outline: none; box-shadow: 0 0 0 3px rgba(107,29,42,0.1); }
+.search-wrapper { position: relative; }
+.search-wrapper i { position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); color: var(--cems-text-secondary); }
+
+/* ---------- Modal Improvements ---------- */
+.modal-content { border-radius: var(--cems-radius); border: none; }
+.modal-header { border-bottom: 1px solid var(--cems-border); }
+.modal-footer { border-top: 1px solid var(--cems-border); }
+
+/* ---------- Confirmation Dialog ---------- */
+.confirm-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+.confirm-dialog {
+    background: var(--cems-card);
+    border-radius: var(--cems-radius);
+    padding: 2rem;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: var(--cems-shadow-lg);
 }
 
-/* ---------- Cards ---------- */
-.card {
-    border-radius: 0.75rem;
-    transition: box-shadow 0.2s ease;
+/* ---------- Empty States ---------- */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--cems-text-secondary);
 }
+.empty-state i { font-size: 3rem; margin-bottom: 0.75rem; display: block; opacity: 0.4; }
 
-.card:hover {
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+/* ---------- Loading ---------- */
+.cems-spinner {
+    width: 2rem; height: 2rem;
+    border: 3px solid var(--cems-border);
+    border-top-color: var(--cems-primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- State Machine Visualization ---------- */
-.state-node .badge {
-    transition: all 0.3s ease;
+/* ---------- Review Panel (Ballot) ---------- */
+.review-panel {
+    background: #F9FAFB;
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius);
+    padding: 1.5rem;
 }
+.review-item { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #E5E7EB; }
+.review-item:last-child { border-bottom: none; }
 
-.state-node .badge.bg-primary {
-    transform: scale(1.1);
-    box-shadow: 0 2px 10px rgba(13, 110, 253, 0.4);
+/* ---------- Student Navbar ---------- */
+.student-navbar {
+    background: var(--cems-primary);
+    padding: 0.6rem 1.5rem;
 }
+.student-navbar .navbar-brand { color: #fff; font-weight: 700; font-size: 1rem; }
+.student-navbar .nav-info { color: rgba(255,255,255,0.85); font-size: 0.85rem; }
 
-/* ---------- Position Cards ---------- */
-.position-card {
-    border-left: 4px solid #0d6efd !important;
-}
-
-/* ---------- Toast ---------- */
-.toast {
-    border-radius: 0.5rem;
-}
-
-/* ---------- Selection Counter ---------- */
-.selection-counter {
-    font-size: 0.9rem;
-    transition: all 0.2s ease;
-}
-
-/* ---------- Navbar ---------- */
-.navbar {
-    backdrop-filter: blur(10px);
-}
+/* ---------- Voter Roll Table ---------- */
+.voter-roll-table th { text-align: left; }
+.finalized-badge { background: var(--cems-success-bg); color: var(--cems-success); padding: 0.2rem 0.5rem; border-radius: 1rem; font-size: 0.7rem; font-weight: 600; }
 
 /* ---------- Footer ---------- */
 footer {
-    background: #f8f9fa;
+    background: #F9FAFB;
+    border-top: 1px solid var(--cems-border);
+    font-size: 0.8rem;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
-    .login-card .card-body {
-        padding: 2rem !important;
-    }
+    .login-card .card-body { padding: 1.5rem !important; }
+    .election-card { flex-direction: column; align-items: flex-start; }
+    .election-card-meta { flex-wrap: wrap; gap: 0.75rem; }
+    .cems-tabs { flex-wrap: wrap; }
+    .metric-card .metric-value { font-size: 1.25rem; }
+}
 
-    .state-node .badge {
-        font-size: 0.75rem !important;
-        padding: 0.4rem 0.6rem !important;
-    }
+/* ---------- Utilities ---------- */
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.text-truncate-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
