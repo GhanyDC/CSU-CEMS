@@ -125,146 +125,318 @@
 </div>
 
 <!-- ── Modals ──────────────────────────────────────────────────────────── -->
-<!-- Create Election -->
+<!-- Create Campus Election -->
 <div class="modal fade" id="createCampusModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Create Campus Election</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <p class="text-muted small">Creates a campus election with all constitutional positions: President, VP, 12 Senators, 9 College Reps, Party-List.</p>
-            <div class="mb-3"><label class="form-label fw-semibold">Election Name</label><input type="text" class="form-control" id="campus-name" placeholder="e.g. AY 2025-2026 SSC General Election"></div>
-            <div class="row g-2">
-                <div class="col-6"><label class="form-label fw-semibold">Start</label><input type="datetime-local" class="form-control" id="campus-start"></div>
-                <div class="col-6"><label class="form-label fw-semibold">End</label><input type="datetime-local" class="form-control" id="campus-end"></div>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-building-fill" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Create Campus Election</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="mb-0 mt-3">
-                <label class="form-label fw-semibold">Election Banner <span class="text-muted fw-normal">(optional)</span></label>
-                <input type="file" class="form-control" id="campus-banner" accept="image/jpeg,image/png,image/webp">
-                <div class="mt-2 d-none" id="campus-banner-preview-wrap">
-                    <img id="campus-banner-preview" class="img-fluid rounded" style="max-height:100px;width:100%;object-fit:cover" alt="">
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Creates a campus election with all constitutional positions: President, VP, 12 Senators, 9 College Reps, Party-List.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Election Name</label>
+                    <input type="text" class="form-control" id="campus-name" placeholder="e.g. AY 2025-2026 SSC General Election">
                 </div>
-                <small class="text-muted">Recommended 1200×500 px · JPG, PNG or WebP · max 5 MB</small>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">Start Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="campus-start">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">End Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="campus-end">
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label fw-semibold small">Election Banner <span class="text-muted fw-normal">(optional)</span></label>
+                    <div class="upload-zone" id="campus-upload-zone">
+                        <input type="file" id="campus-banner" accept="image/jpeg,image/png,image/webp">
+                        <i class="bi bi-image upload-zone-icon"></i>
+                        <div class="upload-zone-text">Click or drag &amp; drop to upload banner</div>
+                        <div class="upload-zone-hint">JPG, PNG or WebP · 1200×628 px recommended · max 5 MB</div>
+                    </div>
+                    <img id="campus-banner-preview" class="upload-preview-img d-none" alt="">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitCreateCampus()">
+                    <i class="bi bi-plus-lg me-1"></i>Create Election
+                </button>
             </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateCampus()">Create Election</button></div>
-    </div></div>
+    </div>
 </div>
+
 <!-- Create College Elections -->
 <div class="modal fade" id="createCollegeModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Create College Elections</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <p class="text-muted small">Creates <strong>9 separate college elections</strong> (one per college), each with Governor, Vice-Governor, and 8 Board Members.</p>
-            <div class="mb-3"><label class="form-label fw-semibold">Name Prefix</label><input type="text" class="form-control" id="college-prefix" placeholder="e.g. AY 2025-2026 College Election"><small class="text-muted">Each will be named: [prefix] – [College]</small></div>
-            <div class="row g-2">
-                <div class="col-6"><label class="form-label fw-semibold">Start</label><input type="datetime-local" class="form-control" id="college-start"></div>
-                <div class="col-6"><label class="form-label fw-semibold">End</label><input type="datetime-local" class="form-control" id="college-end"></div>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-mortarboard-fill" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Create College Elections</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="mb-0 mt-3">
-                <label class="form-label fw-semibold">Shared Banner <span class="text-muted fw-normal">(optional)</span></label>
-                <input type="file" class="form-control" id="college-banner" accept="image/jpeg,image/png,image/webp">
-                <div class="mt-2 d-none" id="college-banner-preview-wrap">
-                    <img id="college-banner-preview" class="img-fluid rounded" style="max-height:100px;width:100%;object-fit:cover" alt="">
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Creates <strong>9 separate college elections</strong> (one per college), each with Governor, Vice-Governor, and 8 Board Members.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Name Prefix</label>
+                    <input type="text" class="form-control" id="college-prefix" placeholder="e.g. AY 2025-2026 College Election">
+                    <div class="form-text">Each will be named: [prefix] — [College Name]</div>
                 </div>
-                <small class="text-muted">Applied to all 9 elections · Recommended 1200×500 px · max 5 MB</small>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">Start Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="college-start">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">End Date &amp; Time</label>
+                        <input type="datetime-local" class="form-control" id="college-end">
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label fw-semibold small">Shared Banner <span class="text-muted fw-normal">(optional)</span></label>
+                    <div class="upload-zone" id="college-upload-zone">
+                        <input type="file" id="college-banner" accept="image/jpeg,image/png,image/webp">
+                        <i class="bi bi-image upload-zone-icon"></i>
+                        <div class="upload-zone-text">Click or drag &amp; drop to upload banner</div>
+                        <div class="upload-zone-hint">Applied to all 9 elections · JPG, PNG or WebP · max 5 MB</div>
+                    </div>
+                    <img id="college-banner-preview" class="upload-preview-img d-none" alt="">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitCreateCollege()">
+                    <i class="bi bi-plus-lg me-1"></i>Create 9 Elections
+                </button>
             </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateCollege()">Create 9 Elections</button></div>
-    </div></div>
+    </div>
 </div>
+
 <!-- Add Candidate -->
 <div class="modal fade" id="addCandidateModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Add Candidate</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <div class="mb-3"><label class="form-label fw-semibold">Position</label><select class="form-select" id="candidate-position"></select></div>
-            <div class="mb-3"><label class="form-label fw-semibold">Full Name</label><input type="text" class="form-control" id="candidate-name"></div>
-            <div class="mb-3"><label class="form-label fw-semibold">Party (optional)</label><input type="text" class="form-control" id="candidate-party"></div>
-            <div class="mb-3"><label class="form-label fw-semibold">College</label><input type="text" class="form-control" id="candidate-college" placeholder="Required for College Representatives"></div>
-            <div class="mb-3"><label class="form-label fw-semibold">Platform / Bio</label><textarea class="form-control" id="candidate-platform" rows="2"></textarea></div>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-person-plus-fill" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Add Candidate</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Position</label>
+                    <select class="form-select" id="candidate-position"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Full Name</label>
+                    <input type="text" class="form-control" id="candidate-name" placeholder="As it appears on official records">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">Party <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="candidate-party">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">College</label>
+                        <input type="text" class="form-control" id="candidate-college" placeholder="For Reps">
+                    </div>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label fw-semibold small">Platform / Bio <span class="text-muted fw-normal">(optional)</span></label>
+                    <textarea class="form-control" id="candidate-platform" rows="2" placeholder="Brief statement or platform"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitAddCandidate()">
+                    <i class="bi bi-person-plus me-1"></i>Add Candidate
+                </button>
+            </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitAddCandidate()">Add Candidate</button></div>
-    </div></div>
+    </div>
 </div>
+
 <!-- Upload Photo -->
 <div class="modal fade" id="uploadPhotoModal" tabindex="-1">
-    <div class="modal-dialog modal-sm"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Upload Photo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body text-center">
-            <img id="photo-preview" src="" alt="" class="candidate-photo d-none mb-2" style="width:96px;height:96px">
-            <input type="file" class="form-control" id="photo-input" accept="image/jpeg,image/png,image/webp">
-            <small class="text-muted">Max 2 MB. JPEG, PNG, or WebP.</small>
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-camera-fill" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Upload Photo</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="photo-preview" src="" alt="" class="photo-upload-preview d-none">
+                <div class="upload-zone">
+                    <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp">
+                    <i class="bi bi-person-circle upload-zone-icon"></i>
+                    <div class="upload-zone-text">Click to choose photo</div>
+                    <div class="upload-zone-hint">JPEG, PNG or WebP · max 2 MB</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary btn-sm" onclick="submitPhotoUpload()">
+                    <i class="bi bi-cloud-upload me-1"></i>Upload
+                </button>
+            </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-cems-outline btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary btn-sm" onclick="submitPhotoUpload()">Upload</button></div>
-    </div></div>
+    </div>
 </div>
-<!-- Confirm dialog -->
+
+<!-- Confirm dialog (danger) -->
 <div class="modal fade" id="confirmModal" tabindex="-1">
-    <div class="modal-dialog modal-sm"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title" id="confirm-title">Confirm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body"><p id="confirm-message"></p></div>
-        <div class="modal-footer"><button class="btn btn-cems-outline btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-danger btn-sm" id="confirm-btn">Confirm</button></div>
-    </div></div>
+    <div class="modal-dialog modal-dialog-centered" style="max-width:400px">
+        <div class="modal-content">
+            <div class="cems-modal-icon-wrap">
+                <div class="cems-modal-icon danger" id="confirm-icon-wrap">
+                    <i class="bi bi-trash3-fill" id="confirm-icon"></i>
+                </div>
+                <div class="cems-modal-heading" id="confirm-title">Confirm Action</div>
+                <p class="cems-modal-subtext" id="confirm-message"></p>
+            </div>
+            <div class="modal-footer justify-content-center gap-2 border-0 pb-4 pt-2">
+                <button class="btn btn-cems-outline px-4" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-danger px-4" id="confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
 </div>
+
 <!-- Create Batch -->
 <div class="modal fade" id="createBatchModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">New Registrar Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <div class="mb-3"><label class="form-label fw-semibold">Name</label><input type="text" class="form-control" id="batch-name" placeholder="e.g., AY 2025-2026 First Semester"></div>
-            <div class="mb-3"><label class="form-label fw-semibold">Academic Year</label><input type="text" class="form-control" id="batch-year" placeholder="2025-2026"></div>
-            <div class="mb-3"><label class="form-label fw-semibold">Description</label><textarea class="form-control" id="batch-desc" rows="2"></textarea></div>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-database-fill-add" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">New Registrar Batch</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Batch Name</label>
+                    <input type="text" class="form-control" id="batch-name" placeholder="e.g., AY 2025-2026 First Semester">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Academic Year</label>
+                    <input type="text" class="form-control" id="batch-year" placeholder="2025-2026">
+                </div>
+                <div class="mb-0">
+                    <label class="form-label fw-semibold small">Description <span class="text-muted fw-normal">(optional)</span></label>
+                    <textarea class="form-control" id="batch-desc" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitCreateBatch()">Create Batch</button>
+            </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitCreateBatch()">Create</button></div>
-    </div></div>
+    </div>
 </div>
+
 <!-- Import Batch CSV -->
 <div class="modal fade" id="importBatchModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Import Registrar Data</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-            <p class="text-muted small">Upload CSV: student_id, full_name, date_of_birth, college, course, year</p>
-            <input type="file" class="form-control" id="batch-csv-input" accept=".csv">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-filetype-csv" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Import Registrar Data</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert mb-3 py-2 px-3" style="background:var(--cems-info-bg,#EFF6FF);border:1px solid #BFDBFE;border-radius:var(--cems-radius-sm);font-size:0.82rem;color:#1D4ED8">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Required columns: <code>student_id, full_name, date_of_birth, college, course, year</code>
+                </div>
+                <div class="upload-zone">
+                    <input type="file" id="batch-csv-input" accept=".csv">
+                    <i class="bi bi-file-earmark-spreadsheet upload-zone-icon"></i>
+                    <div class="upload-zone-text">Click to choose CSV file</div>
+                    <div class="upload-zone-hint">Max 50,000 rows</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitBatchImport()">
+                    <i class="bi bi-upload me-1"></i>Import
+                </button>
+            </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button><button class="btn btn-cems-primary" onclick="submitBatchImport()">Import</button></div>
-    </div></div>
+    </div>
 </div>
+
 <!-- Assign Batch -->
 <div class="modal fade" id="assignBatchModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Select Registrar Batch</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body"><div id="batch-select-list"></div></div>
-        <div class="modal-footer"><button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button></div>
-    </div></div>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-link-45deg" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">Select Registrar Batch</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body"><div id="batch-select-list"></div></div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Add / Edit College -->
 <div class="modal fade" id="addCollegeModal" tabindex="-1">
-    <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header">
-            <h5 class="modal-title" id="college-modal-title">Add College</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-            <input type="hidden" id="college-edit-id">
-            <div class="mb-3">
-                <label class="form-label fw-semibold">College Name</label>
-                <input type="text" class="form-control" id="college-name-input" placeholder="e.g. College of Engineering">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-building" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0" id="college-modal-title">Add College</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Short Code <span class="text-muted fw-normal">(optional)</span></label>
-                <input type="text" class="form-control" id="college-code-input" placeholder="e.g. COE" maxlength="20">
+            <div class="modal-body">
+                <input type="hidden" id="college-edit-id">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">College Name</label>
+                    <input type="text" class="form-control" id="college-name-input" placeholder="e.g. College of Engineering">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Short Code <span class="text-muted fw-normal">(optional)</span></label>
+                    <input type="text" class="form-control" id="college-code-input" placeholder="e.g. COE" maxlength="20">
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="college-active-input" checked>
+                    <label class="form-check-label small" for="college-active-input">Active — visible in election creation dropdowns</label>
+                </div>
             </div>
-            <div class="form-check mb-1">
-                <input type="checkbox" class="form-check-input" id="college-active-input" checked>
-                <label class="form-check-label" for="college-active-input">Active (visible in election dropdowns)</label>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitCollegeForm()">
+                    <i class="bi bi-check-lg me-1"></i>Save College
+                </button>
             </div>
         </div>
-        <div class="modal-footer">
-            <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
-            <button class="btn btn-cems-primary" onclick="submitCollegeForm()">Save</button>
-        </div>
-    </div></div>
+    </div>
 </div>
+
 
 {% endblock %}
 
@@ -358,12 +530,15 @@ function renderElectionList() {
         return;
     }
     const canDelete = adminUser.is_eb_head || adminUser.is_operator;
+    const statusLabels = { draft: 'Draft', active: 'Active', closed: 'Closed', published: 'Published' };
+    const typeLabels = { campus: 'Campus-wide', college: 'College' };
     body.innerHTML = `<div class="election-grid">${filtered.map(e => {
+        const sLabel = statusLabels[e.status] || cap(e.status);
+        const tLabel = typeLabels[e.election_type] || cap(e.election_type);
+        const chips = `<span class="ec-status-chip ec-chip-${e.status}">${sLabel}</span><span class="ec-type-chip">${tLabel}</span>`;
         const bannerHtml = e.banner_url
-            ? `<img class="ec-banner" src="${e.banner_url}" alt="" loading="lazy">`
-            : `<div class="ec-banner-fallback ${e.election_type === 'college' ? 'college' : ''}">
-                <i class="bi bi-${e.election_type === 'campus' ? 'building-fill' : 'mortarboard-fill'} ec-banner-icon"></i>
-               </div>`;
+            ? `<div class="ec-banner-wrap"><img class="ec-banner" src="${e.banner_url}" alt="" loading="lazy">${chips}</div>`
+            : `<div class="ec-banner-wrap"><div class="ec-banner-fallback ${e.election_type === 'college' ? 'college' : ''}"><div class="ec-fallback-inner"><i class="bi bi-${e.election_type === 'campus' ? 'building-fill' : 'mortarboard-fill'}"></i><div class="ec-fallback-label">${tLabel}</div></div></div>${chips}</div>`;
         const vrIcon = e.voter_roll_finalized
             ? `<i class="bi bi-check-circle-fill" style="color:var(--cems-success)"></i> Finalized`
             : `<i class="bi bi-clock"></i> Pending`;
@@ -374,7 +549,6 @@ function renderElectionList() {
             ${bannerHtml}
             <div class="ec-body">
                 <div class="ec-title">${esc(e.name)}</div>
-                <div class="d-flex gap-1 flex-wrap">${statusBadge(e.status)} ${typeBadge(e.election_type)}</div>
                 <div class="ec-meta">
                     <span><i class="bi bi-calendar3"></i> ${fmtDate(e.start_time)}</span>
                     <span>${vrIcon}</span>
@@ -770,7 +944,8 @@ function showCreateCampusModal() {
     document.getElementById('campus-start').value = '';
     document.getElementById('campus-end').value = '';
     document.getElementById('campus-banner').value = '';
-    document.getElementById('campus-banner-preview-wrap').classList.add('d-none');
+    const campusPrev = document.getElementById('campus-banner-preview');
+    if (campusPrev) { campusPrev.classList.add('d-none'); campusPrev.src = ''; }
     new bootstrap.Modal(document.getElementById('createCampusModal')).show();
 }
 document.getElementById('campus-banner')?.addEventListener('change', function() {
@@ -779,7 +954,7 @@ document.getElementById('campus-banner')?.addEventListener('change', function() 
         r.onload = e => {
             const p = document.getElementById('campus-banner-preview');
             p.src = e.target.result;
-            document.getElementById('campus-banner-preview-wrap').classList.remove('d-none');
+            document.getElementById('campus-banner-preview').classList.remove('d-none');
         };
         r.readAsDataURL(this.files[0]);
     }
@@ -813,7 +988,8 @@ function showCreateCollegeModal() {
     document.getElementById('college-start').value = '';
     document.getElementById('college-end').value = '';
     document.getElementById('college-banner').value = '';
-    document.getElementById('college-banner-preview-wrap').classList.add('d-none');
+    const collegePrev = document.getElementById('college-banner-preview');
+    if (collegePrev) { collegePrev.classList.add('d-none'); collegePrev.src = ''; }
     new bootstrap.Modal(document.getElementById('createCollegeModal')).show();
 }
 document.getElementById('college-banner')?.addEventListener('change', function() {
@@ -822,7 +998,7 @@ document.getElementById('college-banner')?.addEventListener('change', function()
         r.onload = e => {
             const p = document.getElementById('college-banner-preview');
             p.src = e.target.result;
-            document.getElementById('college-banner-preview-wrap').classList.remove('d-none');
+            document.getElementById('college-banner-preview').classList.remove('d-none');
         };
         r.readAsDataURL(this.files[0]);
     }
