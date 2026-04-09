@@ -5,17 +5,34 @@
 
 {% block navbar %}
 <nav class="cems-navbar navbar">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="/dashboard/">
-            <span class="brand-icon">E</span> CEMS
+    <div class="container-fluid px-3">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/dashboard/">
+            <img src="{% static 'img/logo.png' %}" class="brand-logo-nav" alt="CEMS"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+            <span class="brand-icon" style="display:none">E</span>
+            <span class="fw-bold ms-1" style="font-size:1rem;letter-spacing:-0.01em">CEMS</span>
         </a>
-        <div class="d-flex align-items-center gap-2">
-            <a class="nav-link text-white" href="/dashboard/" style="font-size:0.85rem;opacity:0.8"><i class="bi bi-speedometer2"></i></a>
-            <a class="nav-link text-white" href="/ballot/" style="font-size:0.85rem"><i class="bi bi-pencil-square"></i><span class="d-none d-md-inline ms-1">Vote</span></a>
-            <a class="nav-link text-white" href="/results/" style="font-size:0.85rem;opacity:0.8"><i class="bi bi-bar-chart-fill"></i></a>
-            <a class="nav-link text-white d-none" href="/admin-panel/" id="nav-admin" style="font-size:0.85rem;opacity:0.8"><i class="bi bi-gear-fill"></i></a>
-            <span class="d-none d-md-inline text-white" style="font-size:0.8rem;opacity:0.8" id="nav-user-name"></span>
-            <button class="btn btn-sm btn-outline-light" id="logout-btn"><i class="bi bi-box-arrow-right"></i></button>
+        <div class="student-nav-links d-flex">
+            <a class="student-nav-link" href="/dashboard/">
+                <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+            </a>
+            <a class="student-nav-link active" href="/ballot/">
+                <i class="bi bi-pencil-square"></i><span>Vote</span>
+            </a>
+            <a class="student-nav-link" href="/results/">
+                <i class="bi bi-bar-chart-fill"></i><span>Results</span>
+            </a>
+        </div>
+        <div class="d-flex align-items-center gap-2 gap-md-3">
+            <span class="student-nav-separator d-none d-md-block"></span>
+            <span class="student-nav-username d-none d-md-inline" id="nav-user-name"></span>
+            <a class="student-nav-link d-none" href="/admin-panel/" id="nav-admin" title="Admin Panel" style="padding:0.4rem 0.55rem">
+                <i class="bi bi-gear-fill"></i>
+            </a>
+            <button class="btn btn-sm btn-outline-light" id="logout-btn" title="Sign out">
+                <i class="bi bi-box-arrow-right"></i>
+                <span class="d-none d-sm-inline ms-1">Logout</span>
+            </button>
         </div>
     </div>
 </nav>
@@ -154,26 +171,26 @@ function renderPositions(positions) {
         pos.candidates.forEach(cand => {
             const inputName = isMulti ? `pos_${pos.id}_${cand.id}` : `pos_${pos.id}`;
             const photoHtml = cand.photo_url
-                ? `<img src="${cand.photo_url}" class="candidate-photo" alt="" style="width:56px;height:56px">`
-                : `<div class="candidate-photo-placeholder" style="width:56px;height:56px"><i class="bi bi-person-circle" style="font-size:1.5rem"></i></div>`;
-            candidatesHtml += `
-                <div class="col-md-6 col-lg-4">
-                    <label class="candidate-card card border h-100 position-relative" for="cand_${cand.id}">
-                        <input type="${inputType}" class="d-none candidate-input"
-                               name="${inputName}" id="cand_${cand.id}"
-                               value="${cand.id}" data-position-id="${pos.id}"
-                               data-max="${pos.max_selections}"
-                               onchange="handleSelection(this)">
-                        <div class="card-body text-center p-3">
-                            <div class="candidate-avatar mb-2">${photoHtml}</div>
-                            <h6 class="card-title mb-1">${CEMS.escapeHtml(cand.full_name)}</h6>
-                            ${cand.party ? `<small class="text-muted">${CEMS.escapeHtml(cand.party)}</small>` : ''}
-                            ${cand.college ? `<br><small style="color:var(--cems-info)">${CEMS.escapeHtml(cand.college)}</small>` : ''}
-                            ${cand.platform_text ? `<div class="text-truncate text-muted mt-1" style="font-size:0.7rem">${CEMS.escapeHtml(cand.platform_text)}</div>` : ''}
-                        </div>
-                        <div class="candidate-check"><i class="bi bi-check-circle-fill" style="color:var(--cems-success)"></i></div>
-                    </label>
-                </div>`;
+            ? `<div class="candidate-photo-area"><img src="${cand.photo_url}" class="candidate-photo" alt="${CEMS.escapeHtml(cand.full_name)}"></div>`
+            : `<div class="candidate-photo-area"><div class="candidate-photo-placeholder"><i class="bi bi-person-fill"></i></div></div>`;
+
+        candidatesHtml += `
+            <div class="col-6 col-md-4 col-lg-3">
+                <label class="candidate-card d-block position-relative" for="cand_${cand.id}">
+                    <input type="${inputType}" class="d-none candidate-input"
+                           name="${inputName}" id="cand_${cand.id}"
+                           value="${cand.id}" data-position-id="${pos.id}"
+                           data-max="${pos.max_selections}"
+                           onchange="handleSelection(this)">
+                    ${photoHtml}
+                    <div class="candidate-info-area">
+                        <div class="cand-name">${CEMS.escapeHtml(cand.full_name)}</div>
+                        ${cand.party ? `<div class="cand-party">${CEMS.escapeHtml(cand.party)}</div>` : ''}
+                        ${cand.college ? `<div class="cand-college">${CEMS.escapeHtml(cand.college)}</div>` : ''}
+                    </div>
+                    <div class="candidate-check"><i class="bi bi-check-circle-fill"></i></div>
+                </label>
+            </div>`;
         });
 
         container.innerHTML += `
@@ -188,7 +205,7 @@ function renderPositions(positions) {
                     </div>
                     <span class="badge-status badge-draft" id="counter-${pos.id}">0 / ${pos.max_selections}</span>
                 </div>
-                <div class="p-3"><div class="row g-3">${candidatesHtml}</div></div>
+                <div class="p-3"><div class="row g-2">${candidatesHtml}</div></div>
             </div>`;
     });
 }

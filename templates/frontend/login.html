@@ -57,17 +57,33 @@
         background: rgba(255,255,255,0.04);
     }
     .hero-logo {
-        width: 64px; height: 64px;
+        width: 80px; height: 80px;
+        background: transparent;
+        border-radius: var(--cems-radius);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1.5rem;
+    }
+    .hero-logo img {
+        width: 80px;
+        height: 80px;
+        object-fit: contain;
+        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.35));
+    }
+    /* Fallback "E" box shown only when logo image fails to load */
+    .hero-logo-fallback {
+        width: 80px; height: 80px;
         background: var(--cems-accent);
         color: var(--cems-primary-dark);
         border-radius: var(--cems-radius);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.8rem;
+        font-size: 2rem;
         font-weight: 800;
-        box-shadow: 0 4px 20px rgba(212, 168, 71, 0.3);
-        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 20px rgba(242,169,0,0.35);
+        display: none;
     }
     .hero-title {
         font-size: clamp(2rem, 4vw, 3rem);
@@ -255,7 +271,12 @@
     <div class="landing-hero">
         <!-- Left: Brand & Info -->
         <div class="hero-brand">
-            <div class="hero-logo">E</div>
+            <div class="hero-logo">
+                <img src="{% static 'img/logo.png' %}"
+                     alt="CEMS Logo"
+                     onerror="this.style.display='none';this.parentElement.querySelector('.hero-logo-fallback').style.display='inline-flex'">
+                <span class="hero-logo-fallback">E</span>
+            </div>
             <h1 class="hero-title">Campus <span>Election</span><br>Management System</h1>
             <p class="hero-subtitle">
                 A secure, transparent, and efficient platform for managing campus-wide and college-level student elections. Every vote counts.

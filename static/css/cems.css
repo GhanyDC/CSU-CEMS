@@ -67,16 +67,60 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; color: var(--cems-text); }
     width: 32px; height: 32px;
     background: var(--cems-accent);
     border-radius: 0.375rem;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     font-weight: 800;
     font-size: 0.9rem;
-    color: #fff;
+    color: #1F2937;
+    flex-shrink: 0;
+}
+/* Logo image in navbar — shown when logo.png is present */
+.brand-logo-nav {
+    width: 34px; height: 34px;
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
 }
 .cems-navbar .nav-link { color: rgba(255,255,255,0.8); font-size: 0.9rem; }
 .cems-navbar .nav-link:hover { color: #fff; }
 .cems-navbar .badge-role { background: rgba(255,255,255,0.15); color: #fff; font-size: 0.75rem; padding: 0.3rem 0.6rem; border-radius: 0.25rem; }
+
+/* ---------- Student Nav Links ---------- */
+.student-nav-links { display: flex; align-items: center; gap: 0.125rem; }
+.student-nav-link {
+    color: rgba(255,255,255,0.72);
+    text-decoration: none;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--cems-radius-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all var(--cems-transition);
+    white-space: nowrap;
+}
+.student-nav-link i { font-size: 0.95rem; }
+.student-nav-link:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.student-nav-link.active { color: #fff; background: rgba(255,255,255,0.18); font-weight: 600; }
+.student-nav-separator {
+    width: 1px; height: 20px;
+    background: rgba(255,255,255,0.25);
+    margin: 0 0.25rem;
+}
+.student-nav-username {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.83rem;
+    color: rgba(255,255,255,0.88);
+}
+@media (max-width: 576px) {
+    .student-nav-link span { display: none; }
+    .student-nav-link { padding: 0.4rem 0.55rem; }
+}
 
 /* ---------- Status Badges ---------- */
 .badge-status { font-size: 0.75rem; padding: 0.3rem 0.7rem; border-radius: 1rem; font-weight: 600; letter-spacing: 0.02em; }
@@ -252,42 +296,87 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; color: var(--cems-text); }
     transition: all var(--cems-transition);
     border: 2px solid var(--cems-border);
     border-radius: var(--cems-radius) !important;
-    padding: 1rem;
+    padding: 0;
     position: relative;
+    overflow: hidden;
+    background: #fff;
 }
 .candidate-card:hover {
-    border-color: var(--cems-primary);
-    box-shadow: var(--cems-shadow);
+    border-color: var(--cems-primary-light);
+    box-shadow: 0 4px 16px rgba(107,15,26,0.14);
+    transform: translateY(-2px);
 }
 .candidate-card.selected {
     border-color: var(--cems-success) !important;
     background: var(--cems-success-bg);
 }
+.candidate-card.selected .candidate-photo-area {
+    background: rgba(5,150,105,0.06);
+}
 .candidate-card .candidate-check {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    top: 0.6rem;
+    right: 0.6rem;
+    font-size: 1.4rem;
     color: var(--cems-success);
-    font-size: 1.25rem;
     display: none;
+    z-index: 2;
+    background: #fff;
+    border-radius: 50%;
+    line-height: 1;
 }
 .candidate-card.selected .candidate-check { display: block; }
-.candidate-photo {
-    width: 64px; height: 64px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid var(--cems-border);
-}
-.candidate-photo-placeholder {
-    width: 64px; height: 64px;
-    border-radius: 50%;
-    background: #F3F4F6;
+
+/* Photo area — the top image section of the candidate card */
+.candidate-photo-area {
+    width: 100%;
+    aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    background: #F3F4F6;
+    overflow: hidden;
+    transition: background var(--cems-transition);
+}
+.candidate-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.candidate-photo-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #B0B7C3;
+    background: linear-gradient(145deg, #F3F4F6, #E9EAED);
+    font-size: 3.5rem;
+}
+
+/* Info section under the photo */
+.candidate-info-area {
+    padding: 0.7rem 0.85rem 0.85rem;
+    text-align: center;
+    border-top: 1px solid var(--cems-border);
+}
+.candidate-info-area .cand-name {
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: var(--cems-text);
+    margin-bottom: 0.15rem;
+    line-height: 1.3;
+}
+.candidate-info-area .cand-party {
+    font-size: 0.75rem;
     color: var(--cems-text-secondary);
-    font-size: 1.5rem;
-    border: 2px solid var(--cems-border);
+    font-weight: 500;
+}
+.candidate-info-area .cand-college {
+    font-size: 0.72rem;
+    color: var(--cems-info);
+    margin-top: 0.1rem;
 }
 
 /* ---------- Position Sections ---------- */
@@ -541,13 +630,42 @@ footer {
     color: #fff; border-radius: var(--cems-radius); padding: 2rem 2.5rem;
     position: relative; overflow: hidden;
 }
-.welcome-banner::after {
-    content: ''; position: absolute; top: -30%; right: -5%; width: 250px; height: 250px;
-    background: rgba(212,168,71,0.08); border-radius: 50%;
+.welcome-banner::before {
+    content: ''; position: absolute; top: -60px; right: 60px;
+    width: 200px; height: 200px;
+    background: rgba(255,255,255,0.04); border-radius: 50%;
 }
-.welcome-banner h3 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
-.welcome-banner p { opacity: 0.85; margin-bottom: 0; font-size: 0.95rem; }
-.welcome-banner .welcome-college { opacity: 0.7; font-size: 0.8rem; margin-top: 0.25rem; }
+.welcome-banner::after {
+    content: ''; position: absolute; top: -30%; right: -5%; width: 280px; height: 280px;
+    background: rgba(242,169,0,0.07); border-radius: 50%;
+}
+/* Override global h-tag color rule inside welcome banner */
+.welcome-banner h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: var(--cems-accent) !important;  /* gold heading — visible on dark red bg */
+}
+.welcome-banner p {
+    opacity: 0.9;
+    margin-bottom: 0;
+    font-size: 0.95rem;
+    color: rgba(255,255,255,0.92) !important;
+}
+.welcome-banner .welcome-college {
+    opacity: 0.75;
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    color: rgba(255,255,255,0.75) !important;
+}
+
+/* Login page logo */
+.hero-logo-img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 8px;
+}
 
 /* ---------- Dashboard Election Card ---------- */
 .dash-election-card {

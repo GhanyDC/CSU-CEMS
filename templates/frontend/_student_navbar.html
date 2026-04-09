@@ -1,0 +1,60 @@
+{% load static %}
+{#
+  Shared student navigation bar.
+  Include in any student-facing template with:
+      {% include 'frontend/_student_navbar.html' %}
+
+  The including page's extra_scripts block must call initStudentNav().
+  Pass the current page name via the 'active_page' template variable:
+      {% with active_page='dashboard' %}
+          {% include 'frontend/_student_navbar.html' %}
+      {% endwith %}
+#}
+<nav class="cems-navbar navbar">
+    <div class="container-fluid px-3">
+
+        <!-- Brand / Logo -->
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/dashboard/">
+            <img src="{% static 'img/logo.png' %}"
+                 class="brand-logo-nav"
+                 alt="CEMS"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+            <span class="brand-icon" style="display:none">E</span>
+            <span class="fw-700 ms-1" style="font-size:1rem;letter-spacing:-0.01em">CEMS</span>
+        </a>
+
+        <!-- Centre nav links -->
+        <div class="student-nav-links d-flex">
+            <a class="student-nav-link {% if active_page == 'dashboard' %}active{% endif %}"
+               href="/dashboard/" data-page="dashboard">
+                <i class="bi bi-speedometer2"></i>
+                <span>Dashboard</span>
+            </a>
+            <a class="student-nav-link {% if active_page == 'ballot' %}active{% endif %}"
+               href="/ballot/" data-page="ballot">
+                <i class="bi bi-pencil-square"></i>
+                <span>Vote</span>
+            </a>
+            <a class="student-nav-link {% if active_page == 'results' %}active{% endif %}"
+               href="/results/" data-page="results">
+                <i class="bi bi-bar-chart-fill"></i>
+                <span>Results</span>
+            </a>
+        </div>
+
+        <!-- Right: user name + logout -->
+        <div class="d-flex align-items-center gap-2 gap-md-3">
+            <span class="student-nav-separator d-none d-md-block"></span>
+            <span class="student-nav-username d-none d-md-inline" id="nav-user-name"></span>
+            <a class="student-nav-link d-none" href="/admin-panel/" id="nav-admin"
+               title="Admin Panel" style="padding:0.4rem 0.55rem">
+                <i class="bi bi-gear-fill"></i>
+            </a>
+            <button class="btn btn-sm btn-outline-light" id="logout-btn" title="Sign out">
+                <i class="bi bi-box-arrow-right"></i>
+                <span class="d-none d-sm-inline ms-1">Logout</span>
+            </button>
+        </div>
+
+    </div>
+</nav>

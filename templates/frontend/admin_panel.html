@@ -7,9 +7,14 @@
 {% block navbar %}
 <nav class="cems-navbar navbar">
     <div class="container-fluid">
-        <a class="navbar-brand" href="{% url 'frontend:admin-panel' %}">
-            <span class="brand-icon">E</span>
-            CEMS <span class="d-none d-md-inline" style="font-weight:400;opacity:0.8;font-size:0.85rem;margin-left:0.25rem">Elections Management</span>
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'frontend:admin-panel' %}">
+            {% load static %}
+            <img src="{% static 'img/logo.png' %}"
+                 class="brand-logo-nav"
+                 alt="CEMS"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+            <span class="brand-icon" style="display:none">E</span>
+            CEMS <span class="d-none d-md-inline" style="font-weight:400;opacity:0.7;font-size:0.82rem;margin-left:0.15rem">Elections Management</span>
         </a>
         <div class="d-flex align-items-center gap-3">
             <span class="badge-role" id="nav-admin-role"></span>
