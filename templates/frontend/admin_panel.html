@@ -859,12 +859,15 @@ async function loadReadiness(electionId) {
 function renderPositions() {
     const el = currentElectionDetail;
     const isDraft = el.status === 'draft';
-    const canEdit = !adminUser.is_read_only;
+    // EB Head only can manage positions (add / edit / delete)
+    const canManagePositions = adminUser.is_eb_head && isDraft;
+    // EB Head + Operator can manage candidates
+    const canManageCandidates = (adminUser.is_eb_head || adminUser.is_operator) && isDraft;
     let html = '';
 
     html += `<div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h5 mb-0">Positions &amp; Candidates</h2>
-        ${isDraft && canEdit ? `<button class="btn btn-cems-primary btn-sm" onclick="showAddCandidateModal()"><i class="bi bi-plus-lg"></i> Add Position</button>` : ''}
+        ${canManagePositions ? `<button class="btn btn-cems-primary btn-sm" onclick="showAddPositionModal()"><i class="bi bi-plus-lg"></i> Add Position</button>` : ''}
     </div>`;
 
     if (!el.positions.length) {
@@ -882,11 +885,10 @@ function renderPositions() {
         html += `<div class="position-block-header">
             <div>
                 <div class="position-name">${esc(pos.title)}</div>
-                <div class="position-sub">Choose ${pos.max_selections}</div>
+                <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}</div>
             </div>
-            ${isDraft && canEdit ? `<div class="position-actions">
-                <button class="icon-btn" onclick="event.stopPropagation()" title="Edit"><i class="bi bi-pencil"></i></button>
-                <button class="icon-btn danger" onclick="event.stopPropagation()" title="Delete"><i class="bi bi-trash3"></i></button>
+            ${canManagePositions ? `<div class="position-actions">
+                <button class="icon-btn danger" onclick="event.stopPropagation();confirmDeletePosition('${pos.id}','${esc(pos.title)}')" title="Delete position"><i class="bi bi-trash3"></i></button>
             </div>` : ''}
         </div>`;
 
@@ -896,7 +898,7 @@ function renderPositions() {
             <span class="candidate-count">${active.length}</span>
         </div>`;
 
-        // Candidate rows
+        // Candidate rows (active)
         if (!active.length) {
             html += '<div class="candidate-row"><span class="text-muted" style="font-size:0.85rem">No candidates added yet</span></div>';
         }
@@ -904,20 +906,33 @@ function renderPositions() {
             const metaParts = [];
             if (c.party) metaParts.push(esc(c.party));
             if (c.college) metaParts.push(esc(c.college));
+            const initials = c.full_name.trim().split(/\s+/).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+            const avatarHtml = c.photo_url
+                ? `<div class="cand-avatar"><img src="${c.photo_url}" alt="${esc(c.full_name)}"></div>`
+                : `<div class="cand-avatar-init">${initials}</div>`;
             html += `<div class="candidate-row">
-                <div class="cand-info">
+                ${avatarHtml}
+                <div class="cand-info" style="flex:1">
                     <span class="cand-name">${esc(c.full_name)}</span>
                     ${metaParts.length ? `<span class="cand-meta">${metaParts.join(' &bull; ')}</span>` : ''}
                 </div>
-                ${isDraft && canEdit ? `<button class="icon-btn danger" onclick="event.stopPropagation();confirmDeleteCandidate('${c.id}','${esc(c.full_name)}')" title="Remove"><i class="bi bi-trash3"></i></button>` : ''}
+                ${canManageCandidates ? `<div class="cand-row-actions">
+                    <button class="icon-btn" onclick="event.stopPropagation();openPhotoUpload('${c.id}')" title="Upload photo"><i class="bi bi-camera"></i></button>
+                    <button class="icon-btn danger" onclick="event.stopPropagation();confirmDeleteCandidate('${c.id}','${esc(c.full_name)}')" title="Remove"><i class="bi bi-trash3"></i></button>
+                </div>` : ''}
             </div>`;
         }
 
-        // Inactive candidates
-        if (inactive.length && isDraft && canEdit) {
+        // Inactive candidates (EB Head + Operator can reactivate)
+        if (inactive.length && canManageCandidates) {
             for (const c of inactive) {
-                html += `<div class="candidate-row" style="opacity:0.5">
-                    <div class="cand-info">
+                const initials = c.full_name.trim().split(/\s+/).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+                const avatarHtml = c.photo_url
+                    ? `<div class="cand-avatar"><img src="${c.photo_url}" alt="${esc(c.full_name)}"></div>`
+                    : `<div class="cand-avatar-init" style="opacity:0.45">${initials}</div>`;
+                html += `<div class="candidate-row" style="opacity:0.55">
+                    ${avatarHtml}
+                    <div class="cand-info" style="flex:1">
                         <span class="cand-name">${esc(c.full_name)} <small class="text-danger">(inactive)</small></span>
                     </div>
                     <button class="icon-btn" onclick="event.stopPropagation();toggleCandidate('${c.id}',true)" title="Reactivate" style="color:var(--cems-success)"><i class="bi bi-arrow-counterclockwise"></i></button>
@@ -926,13 +941,27 @@ function renderPositions() {
         }
 
         // Add candidate button
-        if (isDraft && canEdit) {
+        if (canManageCandidates) {
             html += `<button class="add-candidate-row" onclick="showAddCandidateModal('${pos.id}')"><i class="bi bi-plus"></i> Add Candidate</button>`;
         }
 
         html += `</div>`;
     }
     document.getElementById('tab-positions').innerHTML = html;
+}
+
+function showAddPositionModal() {
+    CEMS.showToast('Position management coming soon.', 'info');
+}
+
+function confirmDeletePosition(posId, posTitle) {
+    showConfirm('Delete Position', `Delete position "${posTitle}" and all its candidates? This cannot be undone.`, async () => {
+        try {
+            const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/positions/${posId}/delete/`, {});
+            if (res.success) { CEMS.showToast('Position deleted.', 'success'); await openElection(currentElectionDetail.id); switchTab('positions'); }
+            else CEMS.showToast(res.error || 'Error deleting position.', 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    });
 }
 
 // ── Voter Roll Tab ───────────────────────────────────────────────────────
@@ -1195,10 +1224,16 @@ async function deleteElection(electionId, electionName) {
 }
 
 // ── Add Candidate ────────────────────────────────────────────────────────
-function showAddCandidateModal() {
+function showAddCandidateModal(posId) {
     if (!currentElectionDetail) return;
     const sel = document.getElementById('candidate-position');
-    sel.innerHTML = currentElectionDetail.positions.map(p => `<option value="${p.id}">${esc(p.title)} (${p.category_display})</option>`).join('');
+    sel.innerHTML = currentElectionDetail.positions.map(p => `<option value="${p.id}">${esc(p.title)} (${esc(p.category_display)})</option>`).join('');
+    if (posId) {
+        sel.value = posId;
+        sel.setAttribute('disabled', '');
+    } else {
+        sel.removeAttribute('disabled');
+    }
     document.getElementById('candidate-name').value = '';
     document.getElementById('candidate-party').value = '';
     document.getElementById('candidate-college').value = '';
@@ -1207,16 +1242,21 @@ function showAddCandidateModal() {
 }
 async function submitAddCandidate() {
     const el = currentElectionDetail;
+    const sel = document.getElementById('candidate-position');
     const body = {
-        position_id: document.getElementById('candidate-position').value,
+        position_id: sel.value,
         full_name: document.getElementById('candidate-name').value,
         party: document.getElementById('candidate-party').value,
         college: document.getElementById('candidate-college').value,
     };
     try {
         const res = await apiPost(`/api/admin/elections/setup/${el.id}/candidates/add/`, body);
-        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('addCandidateModal')).hide(); await openElection(el.id); }
-        else CEMS.showToast(res.error, 'danger');
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('addCandidateModal')).hide();
+            await openElection(el.id);
+            switchTab('positions');
+        } else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
@@ -1224,7 +1264,7 @@ async function toggleCandidate(candidateId, newActive) {
     const el = currentElectionDetail;
     try {
         const res = await apiPost(`/api/admin/elections/setup/${el.id}/candidates/${candidateId}/update/`, { is_active: newActive });
-        if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(el.id); }
+        if (res.success) { CEMS.showToast(res.message, 'success'); await openElection(el.id); switchTab('positions'); }
         else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
@@ -1256,7 +1296,7 @@ async function submitPhotoUpload() {
             body: fd
         });
         const res = await response.json();
-        if (res.success) { CEMS.showToast('Photo uploaded', 'success'); bootstrap.Modal.getInstance(document.getElementById('uploadPhotoModal')).hide(); await openElection(currentElectionDetail.id); }
+        if (res.success) { CEMS.showToast('Photo uploaded', 'success'); bootstrap.Modal.getInstance(document.getElementById('uploadPhotoModal')).hide(); await openElection(currentElectionDetail.id); switchTab('positions'); }
         else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
@@ -1265,7 +1305,7 @@ function confirmDeleteCandidate(id, name) {
     showConfirm('Remove Candidate', `Deactivate "${name}" from this election?`, async () => {
         try {
             const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/candidates/${id}/delete/`, {});
-            if (res.success) { CEMS.showToast('Candidate removed', 'success'); await openElection(currentElectionDetail.id); }
+            if (res.success) { CEMS.showToast('Candidate removed', 'success'); await openElection(currentElectionDetail.id); switchTab('positions'); }
             else CEMS.showToast(res.error, 'danger');
         } catch (err) { CEMS.showToast(err.message, 'danger'); }
     });
