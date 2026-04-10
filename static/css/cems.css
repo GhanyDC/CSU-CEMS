@@ -861,6 +861,18 @@ footer {
 }
 .candidates-divider .candidate-count { font-weight: 700; color: var(--cems-danger); font-size: 0.9rem; }
 
+/* Position monitoring bar (Active/Closed/Published) */
+.position-monitoring {
+    padding: 0.6rem 1.25rem; background: #FFFBF0; border-bottom: 1px solid var(--cems-border);
+    font-size: 0.8rem; color: var(--cems-text-secondary);
+}
+.position-monitoring strong { color: var(--cems-text); }
+
+/* Per-candidate vote display */
+.cand-votes { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; margin-right: 0.5rem; }
+.cand-votes .vote-count { font-weight: 700; font-size: 0.9rem; color: var(--cems-primary); }
+.cand-votes .vote-pct { font-size: 0.75rem; color: var(--cems-text-secondary); }
+
 .candidate-row {
     padding: 0.75rem 1.25rem; display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid #F3F4F6; transition: background var(--cems-transition);

@@ -550,14 +550,16 @@ class TestElectionTallyReview:
         assert response.json()["success"] is True
 
     def test_active_election_tally_blocked_for_non_eb_head(self):
-        """Non-EB-Head roles cannot see live tally during Active."""
+        """Non-EB-Head roles get redacted participation data during Active."""
         op_user, _ = create_admin_user(
             username="TALLY_OP", role=AdminRole.ELECTORAL_BOARD_OPERATOR
         )
         op_client = admin_client_for(op_user)
         election = make_election(status=Election.Status.ACTIVE)
         response = op_client.get(f"/api/admin/elections/{election.pk}/tally/")
-        assert response.status_code == 403
+        assert response.status_code == 200
+        data = response.json()
+        assert data["redacted"] is True
 
     def test_closed_election_tally_available(self):
         election = make_election(status=Election.Status.CLOSED)

@@ -368,15 +368,18 @@ class TestTallyVisibilityRoles:
         # But after closed, they get participation summary
         assert data["success"] is True
 
-    def test_tally_watcher_blocked_during_active(self):
-        """Tally Watcher cannot access tally during Active election."""
+    def test_tally_watcher_redacted_during_active(self):
+        """Tally Watcher gets redacted participation data during Active."""
         election = make_election(status=Election.Status.ACTIVE)
         pos = make_position(election)
         make_candidate(pos)
         user, _ = create_admin_user(username="TW20", role=AdminRole.TALLY_WATCHER)
         client = admin_client_for(user)
         resp = client.get(f"/api/admin/elections/{election.pk}/tally/")
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["redacted"] is True
 
     def test_tally_watcher_sees_tally_after_closed(self):
         """Tally Watcher can access full tally after election is closed."""

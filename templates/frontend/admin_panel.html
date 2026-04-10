@@ -1000,19 +1000,49 @@ async function loadReadiness(electionId) {
 }
 
 // ── Positions & Candidates Tab ───────────────────────────────────────────
-function renderPositions() {
+async function renderPositions() {
     const el = currentElectionDetail;
     const isDraft = el.status === 'draft';
+    const isActive = el.status === 'active';
+    const isClosed = el.status === 'closed';
+    const isPublished = el.status === 'published';
+    const isLive = isActive || isClosed || isPublished;
     // EB Head only can manage positions (add / edit / delete)
     const canManagePositions = adminUser.is_eb_head && isDraft;
     // EB Head + Operator can manage candidates
     const canManageCandidates = (adminUser.is_eb_head || adminUser.is_operator) && isDraft;
+
+    // Fetch tally data for non-draft elections (role-aware on server)
+    let tallyData = null;
+    if (isLive) {
+        try {
+            const res = await CEMS.api(`/api/admin/elections/${el.id}/tally/`);
+            if (res.success) tallyData = res;
+        } catch (e) { console.warn('Tally data unavailable', e); }
+    }
+    // Build position-keyed lookup from tally data
+    const tallyByPos = {};
+    if (tallyData && tallyData.positions) {
+        for (const p of tallyData.positions) tallyByPos[p.position_id] = p;
+    }
+    const isRedacted = tallyData?.redacted === true;
+
     let html = '';
 
     html += `<div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h5 mb-0">Positions &amp; Candidates</h2>
         ${canManagePositions ? `<button class="btn btn-cems-primary btn-sm" onclick="showAddPositionModal()"><i class="bi bi-plus-lg"></i> Add Position</button>` : ''}
     </div>`;
+
+    // State mode indicator for non-draft
+    if (isLive) {
+        const stateLabel = isActive ? 'Active — Live Monitoring' : isClosed ? 'Closed — Review Mode' : 'Published — Final Results';
+        const stateIcon = isActive ? 'bi-broadcast' : isClosed ? 'bi-lock' : 'bi-check-circle';
+        html += `<div class="mb-3 d-flex align-items-center gap-2" style="font-size:0.85rem;color:var(--cems-text-secondary)">
+            <i class="bi ${stateIcon}"></i> ${stateLabel}
+            ${isRedacted ? '&nbsp;&middot;&nbsp;<span class="badge bg-secondary" style="font-size:0.7rem">Participation summary only</span>' : ''}
+        </div>`;
+    }
 
     if (!el.positions.length) {
         html += '<div class="empty-state"><i class="bi bi-list-check"></i><p>No positions configured</p></div>';
@@ -1031,12 +1061,13 @@ function renderPositions() {
         const pos = el.positions[pi];
         const active = pos.candidates.filter(c => c.is_active);
         const inactive = pos.candidates.filter(c => !c.is_active);
+        const posTally = tallyByPos[pos.id] || null;
 
         html += `<div class="position-block" data-position-id="${pos.id}"${canManagePositions ? ' draggable="true"' : ''}>`;
         // Position header
         html += `<div class="position-block-header">
             ${canManagePositions && el.positions.length > 1 ? `<div class="drag-handle me-2"><i class="bi bi-grip-vertical" style="font-size:1.15rem"></i></div>` : ''}
-            <div>
+            <div style="flex:1">
                 <div class="position-name">${esc(pos.title)}</div>
                 <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}</div>
             </div>
@@ -1045,6 +1076,20 @@ function renderPositions() {
                 <button class="icon-btn danger" onclick="event.stopPropagation();confirmDeletePosition('${pos.id}','${esc(pos.title)}')" title="Delete position"><i class="bi bi-trash3"></i></button>
             </div>` : ''}
         </div>`;
+
+        // Per-position participation stats (non-draft only)
+        if (isLive && posTally) {
+            const participation = posTally.position_participation || 0;
+            const totalBallots = posTally.total_ballots || 0;
+            const abstain = posTally.abstain_count || 0;
+            const pctPart = totalBallots > 0 ? (participation / totalBallots * 100).toFixed(1) : '0.0';
+            html += `<div class="position-monitoring">
+                <div class="d-flex flex-wrap gap-3">
+                    <span><i class="bi bi-people-fill me-1"></i>Participation: <strong>${participation}</strong> / ${totalBallots} (${pctPart}%)</span>
+                    <span><i class="bi bi-dash-circle me-1"></i>Abstained: <strong>${abstain}</strong></span>
+                </div>
+            </div>`;
+        }
 
         // Candidates divider
         html += `<div class="candidates-divider">
@@ -1064,12 +1109,25 @@ function renderPositions() {
             const avatarHtml = c.photo_url
                 ? `<div class="cand-avatar"><img src="${c.photo_url}" alt="${esc(c.full_name)}"></div>`
                 : `<div class="cand-avatar-init">${initials}</div>`;
+
+            // Per-candidate vote data (if tally available and not redacted)
+            let voteHtml = '';
+            if (isLive && posTally && !isRedacted) {
+                const candResult = (posTally.results || []).find(r => r.candidate_id === c.id);
+                if (candResult && candResult.votes !== undefined) {
+                    const totalVotes = posTally.total_votes || 1;
+                    const pct = totalVotes > 0 ? (candResult.votes / totalVotes * 100).toFixed(1) : '0.0';
+                    voteHtml = `<div class="cand-votes"><span class="vote-count">${candResult.votes}</span><span class="vote-pct">${pct}%</span></div>`;
+                }
+            }
+
             html += `<div class="candidate-row">
                 ${avatarHtml}
                 <div class="cand-info" style="flex:1">
                     <span class="cand-name">${esc(c.full_name)}</span>
                     ${metaParts.length ? `<span class="cand-meta">${metaParts.join(' &bull; ')}</span>` : ''}
                 </div>
+                ${voteHtml}
                 ${canManageCandidates ? `<div class="cand-row-actions">
                     <button class="icon-btn" onclick="event.stopPropagation();openPhotoUpload('${c.id}')" title="Upload photo"><i class="bi bi-camera"></i></button>
                     <button class="icon-btn danger" onclick="event.stopPropagation();confirmDeleteCandidate('${c.id}','${esc(c.full_name)}')" title="Remove"><i class="bi bi-trash3"></i></button>

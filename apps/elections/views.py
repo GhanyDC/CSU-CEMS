@@ -451,8 +451,8 @@ def election_tally_review(request, election_id):
 
     Returns tally data for an election with role-based visibility:
     - EB Head: full candidate tally during Active, Closed, Published
-    - Tally Watcher: full candidate tally during Closed, Published only
-    - Operator: participation summary only during Closed, Published (no per-candidate votes)
+    - Tally Watcher: participation summary during Active; full tally after Closed/Published
+    - Operator: participation summary only (no per-candidate votes) in all non-draft states
     """
     try:
         election = Election.objects.get(pk=election_id)
@@ -469,27 +469,30 @@ def election_tally_review(request, election_id):
 
     role = request.admin_profile.role
 
-    # During Active: only EB Head can see live candidate tally
-    if election.status == Election.Status.ACTIVE:
-        if role != AdminRole.ELECTORAL_BOARD_HEAD:
-            return JsonResponse(
-                {"success": False, "error": "Live candidate tallies are only available to the Electoral Board Head during active voting."},
-                status=403,
-            )
-
-    # Operator gets participation summary only (no per-candidate votes), even after Closed
-    if role == AdminRole.ELECTORAL_BOARD_OPERATOR:
-        results = ResultService.compute_results_with_thresholds(election)
-        # Strip per-candidate vote counts for operators
+    # --- Helper: strip per-candidate votes for participation-only view ---
+    def _redact_results(results, reason):
         for pos_data in results.get("positions", []):
             for r in pos_data.get("results", []):
                 r.pop("votes", None)
             pos_data.pop("winner", None)
             pos_data.pop("status", None)
         results["redacted"] = True
-        results["redacted_reason"] = "Operator role — per-candidate tallies not available."
+        results["redacted_reason"] = reason
+        return results
+
+    # Operator: always participation summary only (no per-candidate votes)
+    if role == AdminRole.ELECTORAL_BOARD_OPERATOR:
+        results = ResultService.compute_results_with_thresholds(election)
+        _redact_results(results, "Operator role — per-candidate tallies not available.")
         return JsonResponse({"success": True, **results})
 
+    # Tally Watcher: participation summary during Active; full tally after Closed
+    if role == AdminRole.TALLY_WATCHER and election.status == Election.Status.ACTIVE:
+        results = ResultService.compute_results_with_thresholds(election)
+        _redact_results(results, "Tally Watcher — per-candidate tallies available after election is closed.")
+        return JsonResponse({"success": True, **results})
+
+    # EB Head always gets full tally; Tally Watcher gets full tally after Closed/Published
     results = ResultService.compute_results_with_thresholds(election)
     return JsonResponse({"success": True, **results})
 
