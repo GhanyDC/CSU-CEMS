@@ -833,7 +833,12 @@ footer {
 .position-block {
     background: var(--cems-card); border: 1px solid var(--cems-border);
     border-radius: var(--cems-radius); margin-bottom: 1rem; overflow: hidden;
+    transition: box-shadow 0.15s, border-color 0.15s;
 }
+.position-block.dragging { opacity: 0.35; }
+.position-block.drag-over { border-color: var(--cems-primary); box-shadow: 0 0 0 2px rgba(128,0,0,0.18); }
+.drag-handle { cursor: grab; color: var(--cems-text-secondary); padding: 0 0.15rem; display: flex; align-items: center; user-select: none; }
+.drag-handle:active { cursor: grabbing; }
 .position-block-header {
     padding: 1rem 1.25rem; display: flex; align-items: center;
     justify-content: space-between; border-bottom: 1px solid var(--cems-border);

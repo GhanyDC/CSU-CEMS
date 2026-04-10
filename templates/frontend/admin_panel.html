@@ -237,6 +237,7 @@
                 <div class="mb-3">
                     <label class="form-label fw-semibold small">Position</label>
                     <select class="form-select" id="candidate-position"></select>
+                    <div id="candidate-position-display" style="display:none"></div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-semibold small">Full Name</label>
@@ -248,8 +249,8 @@
                         <input type="text" class="form-control" id="candidate-party">
                     </div>
                     <div class="col-6">
-                        <label class="form-label fw-semibold small">College</label>
-                        <input type="text" class="form-control" id="candidate-college" placeholder="For Reps">
+                        <label class="form-label fw-semibold small">College <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="candidate-college" placeholder="e.g. COE, CEBA">
                     </div>
                 </div>
                 <div class="mb-0">
@@ -1019,10 +1020,10 @@ function renderPositions() {
         return;
     }
 
-    // Reorder buttons for EB Head in Draft
+    // Drag-to-reorder hint for EB Head in Draft
     if (canManagePositions && el.positions.length > 1) {
         html += `<div class="mb-2 d-flex align-items-center gap-2" style="font-size:0.82rem;color:var(--cems-text-secondary)">
-            <i class="bi bi-arrows-move"></i> Use <i class="bi bi-arrow-up"></i><i class="bi bi-arrow-down"></i> to reorder positions
+            <i class="bi bi-grip-vertical"></i> Drag positions to reorder
         </div>`;
     }
 
@@ -1031,13 +1032,10 @@ function renderPositions() {
         const active = pos.candidates.filter(c => c.is_active);
         const inactive = pos.candidates.filter(c => !c.is_active);
 
-        html += `<div class="position-block" data-position-id="${pos.id}">`;
+        html += `<div class="position-block" data-position-id="${pos.id}"${canManagePositions ? ' draggable="true"' : ''}>`;
         // Position header
         html += `<div class="position-block-header">
-            ${canManagePositions && el.positions.length > 1 ? `<div class="d-flex flex-column me-2" style="gap:2px">
-                <button class="icon-btn" style="padding:1px 4px;font-size:0.7rem" onclick="event.stopPropagation();movePosition(${pi},-1)" title="Move up" ${pi === 0 ? 'disabled' : ''}><i class="bi bi-arrow-up"></i></button>
-                <button class="icon-btn" style="padding:1px 4px;font-size:0.7rem" onclick="event.stopPropagation();movePosition(${pi},1)" title="Move down" ${pi === el.positions.length - 1 ? 'disabled' : ''}><i class="bi bi-arrow-down"></i></button>
-            </div>` : ''}
+            ${canManagePositions && el.positions.length > 1 ? `<div class="drag-handle me-2"><i class="bi bi-grip-vertical" style="font-size:1.15rem"></i></div>` : ''}
             <div>
                 <div class="position-name">${esc(pos.title)}</div>
                 <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}</div>
@@ -1104,6 +1102,7 @@ function renderPositions() {
         html += `</div>`;
     }
     document.getElementById('tab-positions').innerHTML = html;
+    if (canManagePositions) initPositionDnd();
 }
 
 let editPositionId = null;
@@ -1166,21 +1165,50 @@ function confirmDeletePosition(posId, posTitle) {
     });
 }
 
-async function movePosition(currentIndex, direction) {
-    const el = currentElectionDetail;
-    const positions = [...el.positions];
-    const newIndex = currentIndex + direction;
-    if (newIndex < 0 || newIndex >= positions.length) return;
-    // Swap
-    [positions[currentIndex], positions[newIndex]] = [positions[newIndex], positions[currentIndex]];
-    const orderedIds = positions.map(p => p.id);
-    try {
-        const res = await apiPost(`/api/admin/elections/setup/${el.id}/positions/reorder/`, { order: orderedIds });
-        if (res.success) {
-            await openElection(el.id);
-            switchTab('positions');
-        } else { CEMS.showToast(res.error || 'Failed to reorder.', 'danger'); }
-    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+function initPositionDnd() {
+    const container = document.getElementById('tab-positions');
+    let dragSrcEl = null;
+    container.querySelectorAll('.position-block[draggable="true"]').forEach(block => {
+        block.addEventListener('dragstart', e => {
+            dragSrcEl = block;
+            setTimeout(() => block.classList.add('dragging'), 0);
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        block.addEventListener('dragend', () => {
+            block.classList.remove('dragging');
+            container.querySelectorAll('.position-block').forEach(b => b.classList.remove('drag-over'));
+        });
+        block.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (block !== dragSrcEl) {
+                container.querySelectorAll('.position-block').forEach(b => b.classList.remove('drag-over'));
+                block.classList.add('drag-over');
+            }
+        });
+        block.addEventListener('dragleave', e => {
+            if (!block.contains(e.relatedTarget)) block.classList.remove('drag-over');
+        });
+        block.addEventListener('drop', async e => {
+            e.preventDefault();
+            block.classList.remove('drag-over');
+            if (!dragSrcEl || dragSrcEl === block) return;
+            const blocks = [...container.querySelectorAll('.position-block')];
+            const srcIdx = blocks.indexOf(dragSrcEl);
+            const dstIdx = blocks.indexOf(block);
+            // Optimistic DOM update
+            if (srcIdx < dstIdx) block.after(dragSrcEl);
+            else block.before(dragSrcEl);
+            // Build new order from updated DOM
+            const ids = [...container.querySelectorAll('.position-block')].map(b => b.dataset.positionId);
+            const el = currentElectionDetail;
+            try {
+                const res = await apiPost(`/api/admin/elections/setup/${el.id}/positions/reorder/`, { order: ids });
+                if (res.success) { await openElection(el.id); switchTab('positions'); }
+                else { CEMS.showToast(res.error || 'Failed to reorder.', 'danger'); renderPositions(); }
+            } catch (err) { CEMS.showToast(err.message, 'danger'); renderPositions(); }
+        });
+    });
 }
 
 // ── Voter Roll Tab ───────────────────────────────────────────────────────
@@ -1499,12 +1527,18 @@ async function deleteElection(electionId, electionName) {
 function showAddCandidateModal(posId) {
     if (!currentElectionDetail) return;
     const sel = document.getElementById('candidate-position');
+    const displayDiv = document.getElementById('candidate-position-display');
     sel.innerHTML = currentElectionDetail.positions.map(p => `<option value="${p.id}">${esc(p.title)} (${esc(p.category_display)})</option>`).join('');
     if (posId) {
+        const pos = currentElectionDetail.positions.find(p => p.id === posId);
         sel.value = posId;
-        sel.setAttribute('disabled', '');
+        sel.style.display = 'none';
+        displayDiv.style.display = '';
+        displayDiv.innerHTML = `<div style="background:#F9FAFB;border:1px solid var(--cems-border);border-radius:var(--cems-radius-sm);padding:0.5rem 0.85rem;font-weight:600;font-size:0.9rem">${esc(pos.title)} <span class="badge ms-1" style="background:var(--cems-primary);font-weight:400;font-size:0.7rem;vertical-align:middle">${esc(pos.category_display)}</span></div>`;
     } else {
+        sel.style.display = '';
         sel.removeAttribute('disabled');
+        displayDiv.style.display = 'none';
     }
     document.getElementById('candidate-name').value = '';
     document.getElementById('candidate-party').value = '';
