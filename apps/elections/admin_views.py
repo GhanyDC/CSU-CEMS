@@ -208,7 +208,7 @@ def _serialize_election_detail(election):
 
 @require_GET
 @admin_login_required
-@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
 def list_elections(request):
     """
     GET /api/admin/elections/setup/list/
@@ -224,7 +224,7 @@ def list_elections(request):
 
 @require_GET
 @admin_login_required
-@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
 def election_detail(request, election_id):
     """
     GET /api/admin/elections/setup/<election_id>/
@@ -802,7 +802,7 @@ def import_voter_roll(request, election_id):
 
 @require_GET
 @admin_login_required
-@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
 def voter_roll_summary(request, election_id):
     """
     GET /api/admin/elections/setup/<election_id>/voter-roll/summary/
@@ -908,7 +908,7 @@ def finalize_voter_roll(request, election_id):
 
 @require_GET
 @admin_login_required
-@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
 def readiness_check(request, election_id):
     """
     GET /api/admin/elections/setup/<election_id>/readiness/
@@ -1059,7 +1059,7 @@ def delete_candidate(request, election_id, candidate_id):
 
 @require_GET
 @admin_login_required
-@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
 def list_registrar_batches(request):
     """
     GET /api/admin/elections/setup/registrar-batches/
@@ -1267,7 +1267,7 @@ def assign_registrar_batch(request, election_id):
 
 @require_GET
 @admin_login_required
-@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER, AdminRole.AUDITOR)
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
 def list_colleges(request):
     """GET /api/admin/elections/setup/colleges/ — list all colleges."""
     colleges = College.objects.all()
@@ -1360,4 +1360,65 @@ def delete_college(request, college_id):
 
     college.delete()
     return JsonResponse({"success": True, "message": "College deleted."})
+
+
+# ---------------------------------------------------------------------------
+# Position reorder (EB Head only, Draft only)
+# ---------------------------------------------------------------------------
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(AdminRole.ELECTORAL_BOARD_HEAD)
+def reorder_positions(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/positions/reorder/
+    Body: {"order": ["position-uuid-1", "position-uuid-2", ...]}
+
+    Reorder positions for an election. Election must be in DRAFT.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status != Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "Positions can only be reordered while election is in Draft."},
+            status=400,
+        )
+
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    order_list = data.get("order", [])
+    if not isinstance(order_list, list) or not order_list:
+        return JsonResponse(
+            {"success": False, "error": "order must be a non-empty list of position IDs."},
+            status=400,
+        )
+
+    # Validate all IDs belong to this election
+    election_positions = {
+        str(p.pk): p
+        for p in Position.objects.filter(election=election)
+    }
+
+    for pos_id in order_list:
+        if str(pos_id) not in election_positions:
+            return JsonResponse(
+                {"success": False, "error": f"Position '{pos_id}' not found in this election."},
+                status=400,
+            )
+
+    # Apply new ordering
+    for idx, pos_id in enumerate(order_list):
+        pos = election_positions[str(pos_id)]
+        pos.order = idx + 1
+        pos.save(update_fields=["order"])
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Positions reordered ({len(order_list)} positions).",
+    })
 

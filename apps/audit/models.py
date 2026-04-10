@@ -25,6 +25,7 @@ class AuditLog(models.Model):
         ADMIN_LOGIN_ATTEMPT = "admin_login_attempt", "Admin Login Attempt"
         ADMIN_LOGOUT = "admin_logout", "Admin Logout"
         ADMIN_PERMISSION_DENIED = "admin_permission_denied", "Admin Permission Denied"
+        EXPORT_GENERATED = "export_generated", "Export Generated"
 
     id: models.UUIDField = models.UUIDField(
         primary_key=True,

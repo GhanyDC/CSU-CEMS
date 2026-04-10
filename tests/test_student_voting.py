@@ -541,11 +541,23 @@ class TestElectionTallyReview:
         self.admin_client = admin_client_for(self.eb_user)
 
     def test_active_election_tally_blocked(self):
-        """No live candidate tallies during active voting."""
+        """EB Head CAN see live tally during Active (updated requirement)."""
         election = make_election(status=Election.Status.ACTIVE)
+        pos = make_position(election)
+        make_candidate(pos)
         response = self.admin_client.get(f"/api/admin/elections/{election.pk}/tally/")
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+
+    def test_active_election_tally_blocked_for_non_eb_head(self):
+        """Non-EB-Head roles cannot see live tally during Active."""
+        op_user, _ = create_admin_user(
+            username="TALLY_OP", role=AdminRole.ELECTORAL_BOARD_OPERATOR
+        )
+        op_client = admin_client_for(op_user)
+        election = make_election(status=Election.Status.ACTIVE)
+        response = op_client.get(f"/api/admin/elections/{election.pk}/tally/")
         assert response.status_code == 403
-        assert "not available during active voting" in response.json()["error"]
 
     def test_closed_election_tally_available(self):
         election = make_election(status=Election.Status.CLOSED)
@@ -591,14 +603,15 @@ class TestMonitoringRoleEnforcement:
         response = client.get(f"/api/admin/elections/{election.pk}/turnout/")
         assert response.status_code == 200
 
-    def test_auditor_can_access_turnout(self):
+    def test_auditor_cannot_access_turnout(self):
+        """AUDITOR role is no longer granted turnout access."""
         auditor_user, _ = create_admin_user(
             username="AUDIT01", role=AdminRole.AUDITOR
         )
         election = make_election()
         client = admin_client_for(auditor_user)
         response = client.get(f"/api/admin/elections/{election.pk}/turnout/")
-        assert response.status_code == 200
+        assert response.status_code == 403
 
     def test_technical_support_cannot_access_turnout(self):
         tech_user, _ = create_admin_user(

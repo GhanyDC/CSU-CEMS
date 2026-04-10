@@ -159,6 +159,15 @@ function renderResults(positions, totalBallots) {
             thresholdHtml = `<small class="text-muted d-block mt-1">50%+1 Threshold: <strong>${pos.threshold_50_plus_1}</strong> votes (of ${pos.threshold_denominator} eligible)</small>`;
         }
 
+        let abstainHtml = '';
+        if (pos.abstain_count !== undefined && pos.abstain_count > 0) {
+            abstainHtml = `<div class="d-flex align-items-center gap-2 mt-2 py-2 px-3" style="background:var(--cems-surface);border-radius:var(--cems-radius-sm);font-size:0.83rem;color:var(--cems-text-secondary)">
+                <i class="bi bi-dash-circle"></i>
+                <span><strong>${pos.abstain_count}</strong> abstain${pos.abstain_count !== 1 ? 's' : ''}</span>
+                <span class="ms-auto">${pos.total_ballots ? ((pos.abstain_count / pos.total_ballots) * 100).toFixed(1) : 0}% of ballots</span>
+            </div>`;
+        }
+
         let candidatesHtml = '';
         results.forEach((cand) => {
             const pct = posTotal > 0 ? ((cand.votes / posTotal) * 100).toFixed(1) : 0;
@@ -206,6 +215,7 @@ function renderResults(positions, totalBallots) {
                     <div>${winnerInfo}</div>
                 </div>
                 ${candidatesHtml || '<p class="text-muted mb-0">No candidates or votes.</p>'}
+                ${abstainHtml}
             </div>`;
     });
 }

@@ -3,7 +3,7 @@ Admin election setup URL routing.
 """
 from django.urls import path
 
-from apps.elections import admin_views
+from apps.elections import admin_views, export_views
 
 app_name = "admin_elections"
 
@@ -24,6 +24,7 @@ urlpatterns = [
     path("<uuid:election_id>/positions/create/", admin_views.create_position, name="position-create"),
     path("<uuid:election_id>/positions/<uuid:position_id>/update/", admin_views.update_position, name="position-update"),
     path("<uuid:election_id>/positions/<uuid:position_id>/delete/", admin_views.delete_position, name="position-delete"),
+    path("<uuid:election_id>/positions/reorder/", admin_views.reorder_positions, name="position-reorder"),
 
     # Candidate management
     path("<uuid:election_id>/candidates/add/", admin_views.add_candidate, name="add-candidate"),
@@ -64,4 +65,11 @@ urlpatterns = [
     path("colleges/create/", admin_views.create_college, name="college-create"),
     path("colleges/<uuid:college_id>/update/", admin_views.update_college, name="college-update"),
     path("colleges/<uuid:college_id>/delete/", admin_views.delete_college, name="college-delete"),
+
+    # Export endpoints
+    path("<uuid:election_id>/export/turnout/csv/", export_views.export_turnout_csv, name="export-turnout-csv"),
+    path("<uuid:election_id>/export/turnout/text/", export_views.export_turnout_text, name="export-turnout-text"),
+    path("<uuid:election_id>/export/tally/csv/", export_views.export_tally_csv, name="export-tally-csv"),
+    path("<uuid:election_id>/export/participation/csv/", export_views.export_participation_csv, name="export-participation-csv"),
+    path("<uuid:election_id>/export/ballot-audit/csv/", export_views.export_ballot_audit_csv, name="export-ballot-audit-csv"),
 ]

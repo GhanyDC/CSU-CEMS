@@ -200,7 +200,7 @@ class ResultService:
 
     @staticmethod
     def _compute_position_result(position: Position) -> dict:
-        """Compute results for a single position."""
+        """Compute results for a single position, including abstain count."""
         # Count votes per candidate via DB aggregation
         vote_counts = (
             BallotSelection.objects
@@ -249,6 +249,20 @@ class ResultService:
             position, results, total_votes,
         )
 
+        # Compute abstain count: ballots that did NOT select any candidate for this position
+        total_ballots_in_election = Ballot.objects.filter(election=position.election).count()
+        ballots_with_selection = (
+            BallotSelection.objects
+            .filter(position=position)
+            .values("ballot_id")
+            .distinct()
+            .count()
+        )
+        abstain_count = max(0, total_ballots_in_election - ballots_with_selection)
+
+        # Position participation = ballots that selected at least one candidate
+        position_participation = ballots_with_selection
+
         return {
             "position_id": str(position.pk),
             "position": position.title,
@@ -258,6 +272,9 @@ class ResultService:
             "winner": winner,
             "status": status,
             "results": results,
+            "abstain_count": abstain_count,
+            "position_participation": position_participation,
+            "total_ballots": total_ballots_in_election,
         }
 
     @staticmethod

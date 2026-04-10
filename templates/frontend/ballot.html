@@ -205,7 +205,16 @@ function renderPositions(positions) {
                     </div>
                     <span class="badge-status badge-draft" id="counter-${pos.id}">0 / ${pos.max_selections}</span>
                 </div>
-                <div class="p-3"><div class="row g-2">${candidatesHtml}</div></div>
+                <div class="p-3">
+                    <div class="row g-2">${candidatesHtml}</div>
+                    <div class="mt-2 pt-2 border-top d-flex align-items-center gap-2">
+                        <input type="checkbox" class="form-check-input" id="abstain-${pos.id}"
+                               data-position-id="${pos.id}" onchange="handleAbstain(this)">
+                        <label class="form-check-label text-muted" for="abstain-${pos.id}" style="font-size:0.85rem;cursor:pointer">
+                            <i class="bi bi-dash-circle me-1"></i>Abstain from this position
+                        </label>
+                    </div>
+                </div>
             </div>`;
     });
 }
@@ -233,6 +242,12 @@ function handleSelection(input) {
         }
     }
 
+    // Uncheck abstain when a candidate is selected
+    const abstainCb = document.getElementById(`abstain-${posId}`);
+    if (abstainCb && input.checked) {
+        abstainCb.checked = false;
+    }
+
     // Update visual state
     document.querySelectorAll(`input[data-position-id="${posId}"]`).forEach(inp => {
         const card = inp.closest('.candidate-card');
@@ -252,24 +267,54 @@ function handleSelection(input) {
     updateSummary();
 }
 
+function handleAbstain(cb) {
+    const posId = cb.dataset.positionId;
+    if (cb.checked) {
+        // Deselect all candidates for this position
+        document.querySelectorAll(`input.candidate-input[data-position-id="${posId}"]`).forEach(inp => {
+            inp.checked = false;
+            const card = inp.closest('.candidate-card');
+            if (card) card.classList.remove('selected');
+        });
+        const pos = positionsData.find(p => p.id === posId);
+        const maxSel = pos ? pos.max_selections : 1;
+        const counter = document.getElementById(`counter-${posId}`);
+        counter.textContent = 'Abstain';
+        counter.className = 'badge-status badge-draft';
+    } else {
+        const pos = positionsData.find(p => p.id === posId);
+        const maxSel = pos ? pos.max_selections : 1;
+        const counter = document.getElementById(`counter-${posId}`);
+        counter.textContent = `0 / ${maxSel}`;
+        counter.className = 'badge-status badge-draft';
+    }
+    updateSummary();
+}
+
 function updateSummary() {
     const summary = document.getElementById('ballot-summary');
     let html = '';
     let totalSelections = 0;
+    let totalAbstains = 0;
 
     positionsData.forEach(pos => {
-        const checked = document.querySelectorAll(`input[data-position-id="${pos.id}"]:checked`);
+        const abstainCb = document.getElementById(`abstain-${pos.id}`);
+        const isAbstain = abstainCb && abstainCb.checked;
+        const checked = document.querySelectorAll(`input.candidate-input[data-position-id="${pos.id}"]:checked`);
         const names = Array.from(checked).map(inp => {
             const cand = pos.candidates.find(c => c.id === inp.value);
             return cand ? CEMS.escapeHtml(cand.full_name) : inp.value;
         });
         totalSelections += names.length;
+        if (isAbstain) totalAbstains++;
 
         html += `<div class="info-list-item">
             <span class="info-label">${CEMS.escapeHtml(pos.title)}</span>
-            <span>${names.length > 0
-                ? names.map(n => `<span class="badge-status badge-active">${n}</span>`).join(' ')
-                : '<span class="text-muted" style="font-size:0.85rem">No selection</span>'
+            <span>${isAbstain
+                ? '<span class="badge-status badge-draft"><i class="bi bi-dash-circle me-1"></i>Abstain</span>'
+                : (names.length > 0
+                    ? names.map(n => `<span class="badge-status badge-active">${n}</span>`).join(' ')
+                    : '<span class="text-muted" style="font-size:0.85rem">No selection</span>')
             }</span>
         </div>`;
     });
@@ -277,7 +322,8 @@ function updateSummary() {
     summary.innerHTML = html;
 
     const submitBtn = document.getElementById('submit-ballot-btn');
-    submitBtn.disabled = totalSelections === 0;
+    // Enable submit if at least one selection OR at least one explicit abstain
+    submitBtn.disabled = (totalSelections === 0 && totalAbstains === 0);
 }
 
 document.getElementById('ballot-form').addEventListener('submit', async (e) => {
@@ -291,7 +337,7 @@ document.getElementById('ballot-form').addEventListener('submit', async (e) => {
 
     const selections = [];
     positionsData.forEach(pos => {
-        const checked = document.querySelectorAll(`input[data-position-id="${pos.id}"]:checked`);
+        const checked = document.querySelectorAll(`input.candidate-input[data-position-id="${pos.id}"]:checked`);
         checked.forEach(inp => {
             selections.push({
                 position_id: pos.id,
@@ -299,6 +345,13 @@ document.getElementById('ballot-form').addEventListener('submit', async (e) => {
             });
         });
     });
+
+    if (selections.length === 0) {
+        CEMS.showToast('You must vote for at least one candidate. You cannot abstain from all positions.', 'warning');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-send-fill"></i> Submit Ballot';
+        return;
+    }
 
     try {
         const res = await CEMS.api('/api/voting/cast/', {

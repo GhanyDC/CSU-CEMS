@@ -876,8 +876,69 @@ function renderOverview() {
         </div>`;
     }
 
+    // ── Export Controls ──────────────────────────────────────────────────
+    if (el.status !== 'draft') {
+        const canExportTally = (adminUser.is_eb_head || adminUser.is_read_only) && (el.status === 'closed' || el.status === 'published');
+        const canExportParticipation = adminUser.is_eb_head && (el.status === 'closed' || el.status === 'published');
+        html += `<div class="cems-card mb-4">
+            <div class="cems-card-header d-flex align-items-center gap-2">
+                <i class="bi bi-download" style="color:var(--cems-primary)"></i>
+                <span class="fw-semibold">Exports</span>
+            </div>
+            <div class="p-3">
+                <div class="row g-2">
+                    <div class="col-6 col-md-4">
+                        <button class="btn btn-cems-outline btn-sm w-100" onclick="exportFile('turnout','csv')">
+                            <i class="bi bi-filetype-csv me-1"></i>Turnout CSV
+                        </button>
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <button class="btn btn-cems-outline btn-sm w-100" onclick="exportTurnoutText()">
+                            <i class="bi bi-file-text me-1"></i>Turnout Text
+                        </button>
+                    </div>
+                    ${canExportTally ? `<div class="col-6 col-md-4">
+                        <button class="btn btn-cems-outline btn-sm w-100" onclick="exportFile('tally','csv')">
+                            <i class="bi bi-filetype-csv me-1"></i>Tally CSV
+                        </button>
+                    </div>` : ''}
+                    ${canExportParticipation ? `<div class="col-6 col-md-4">
+                        <button class="btn btn-cems-outline btn-sm w-100" onclick="exportFile('participation','csv')">
+                            <i class="bi bi-filetype-csv me-1"></i>Participation CSV
+                        </button>
+                    </div>` : ''}
+                    ${canExportParticipation ? `<div class="col-6 col-md-4">
+                        <button class="btn btn-cems-outline btn-sm w-100" onclick="exportFile('ballot-audit','csv')">
+                            <i class="bi bi-filetype-csv me-1"></i>Ballot Audit CSV
+                        </button>
+                    </div>` : ''}
+                </div>
+                ${!canExportTally && (el.status === 'active') ? `<p class="text-muted mt-2 mb-0" style="font-size:0.8rem"><i class="bi bi-info-circle me-1"></i>Tally and participation exports become available after the election is closed.</p>` : ''}
+            </div>
+        </div>`;
+    }
+
     document.getElementById('tab-overview').innerHTML = html;
     if (el.status === 'draft') loadReadiness(el.id);
+}
+
+// ── Export helpers ────────────────────────────────────────────────────────
+function exportFile(type, fmt) {
+    const eid = currentElectionDetail.id;
+    window.open(`/api/admin/elections/setup/${eid}/export/${type}/${fmt}/`, '_blank');
+}
+
+async function exportTurnoutText() {
+    const eid = currentElectionDetail.id;
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${eid}/export/turnout/text/`);
+        if (res.success && res.text) {
+            await navigator.clipboard.writeText(res.text);
+            CEMS.showToast('Turnout summary copied to clipboard.', 'success');
+        } else {
+            CEMS.showToast(res.error || 'Failed to generate turnout text.', 'danger');
+        }
+    } catch (err) { CEMS.showToast('Error: ' + err.message, 'danger'); }
 }
 
 async function loadReadiness(electionId) {
@@ -958,13 +1019,25 @@ function renderPositions() {
         return;
     }
 
-    for (const pos of el.positions) {
+    // Reorder buttons for EB Head in Draft
+    if (canManagePositions && el.positions.length > 1) {
+        html += `<div class="mb-2 d-flex align-items-center gap-2" style="font-size:0.82rem;color:var(--cems-text-secondary)">
+            <i class="bi bi-arrows-move"></i> Use <i class="bi bi-arrow-up"></i><i class="bi bi-arrow-down"></i> to reorder positions
+        </div>`;
+    }
+
+    for (let pi = 0; pi < el.positions.length; pi++) {
+        const pos = el.positions[pi];
         const active = pos.candidates.filter(c => c.is_active);
         const inactive = pos.candidates.filter(c => !c.is_active);
 
-        html += `<div class="position-block">`;
+        html += `<div class="position-block" data-position-id="${pos.id}">`;
         // Position header
         html += `<div class="position-block-header">
+            ${canManagePositions && el.positions.length > 1 ? `<div class="d-flex flex-column me-2" style="gap:2px">
+                <button class="icon-btn" style="padding:1px 4px;font-size:0.7rem" onclick="event.stopPropagation();movePosition(${pi},-1)" title="Move up" ${pi === 0 ? 'disabled' : ''}><i class="bi bi-arrow-up"></i></button>
+                <button class="icon-btn" style="padding:1px 4px;font-size:0.7rem" onclick="event.stopPropagation();movePosition(${pi},1)" title="Move down" ${pi === el.positions.length - 1 ? 'disabled' : ''}><i class="bi bi-arrow-down"></i></button>
+            </div>` : ''}
             <div>
                 <div class="position-name">${esc(pos.title)}</div>
                 <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}</div>
@@ -1091,6 +1164,23 @@ function confirmDeletePosition(posId, posTitle) {
             else CEMS.showToast(res.error || 'Error deleting position.', 'danger');
         } catch (err) { CEMS.showToast(err.message, 'danger'); }
     });
+}
+
+async function movePosition(currentIndex, direction) {
+    const el = currentElectionDetail;
+    const positions = [...el.positions];
+    const newIndex = currentIndex + direction;
+    if (newIndex < 0 || newIndex >= positions.length) return;
+    // Swap
+    [positions[currentIndex], positions[newIndex]] = [positions[newIndex], positions[currentIndex]];
+    const orderedIds = positions.map(p => p.id);
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${el.id}/positions/reorder/`, { order: orderedIds });
+        if (res.success) {
+            await openElection(el.id);
+            switchTab('positions');
+        } else { CEMS.showToast(res.error || 'Failed to reorder.', 'danger'); }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
 // ── Voter Roll Tab ───────────────────────────────────────────────────────

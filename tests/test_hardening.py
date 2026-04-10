@@ -676,10 +676,33 @@ class TestVisibilityControls:
         self.admin_client = admin_client_for(self.user)
 
     def test_tally_blocked_during_active(self):
+        """EB Head CAN see tally during Active; non-EB-Head roles cannot."""
         election = _make_election(status=Election.Status.ACTIVE)
+        # EB Head can see live tally during Active
         resp = self.admin_client.get(f"/api/admin/elections/{election.pk}/tally/")
+        assert resp.status_code == 200
+
+    def test_tally_blocked_during_active_for_operator(self):
+        """Operator cannot see live tally during Active."""
+        from apps.accounts.models import AdminRole
+        op_user, _ = create_admin_user(
+            username="vis_operator", role=AdminRole.ELECTORAL_BOARD_OPERATOR
+        )
+        op_client = admin_client_for(op_user)
+        election = _make_election(status=Election.Status.ACTIVE)
+        resp = op_client.get(f"/api/admin/elections/{election.pk}/tally/")
         assert resp.status_code == 403
-        assert "not available during active" in resp.json()["error"].lower()
+
+    def test_tally_blocked_during_active_for_tally_watcher(self):
+        """Tally Watcher cannot see live tally during Active."""
+        from apps.accounts.models import AdminRole
+        tw_user, _ = create_admin_user(
+            username="vis_tw", role=AdminRole.TALLY_WATCHER
+        )
+        tw_client = admin_client_for(tw_user)
+        election = _make_election(status=Election.Status.ACTIVE)
+        resp = tw_client.get(f"/api/admin/elections/{election.pk}/tally/")
+        assert resp.status_code == 403
 
     def test_tally_blocked_during_draft(self):
         election = _make_election(status=Election.Status.DRAFT)
