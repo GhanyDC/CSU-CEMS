@@ -83,7 +83,10 @@
                         <div style="color:var(--cems-success)" class="mb-3"><i class="bi bi-check-circle-fill" style="font-size:4rem"></i></div>
                         <h3 class="fw-bold">Vote Submitted!</h3>
                         <p class="text-muted">Your ballot has been recorded successfully.</p>
+                        <p class="small text-muted mb-1" id="success-election-line"></p>
+                        <p class="small text-muted mb-1" id="success-timestamp-line"></p>
                         <p class="small text-muted">Ballot ID: <code id="ballot-id-display"></code></p>
+                        <p class="text-danger small mt-2 mb-3"><i class="bi bi-lock-fill me-1"></i>Your vote is anonymous and cannot be changed.</p>
                         <a href="/dashboard/" class="btn btn-cems-primary btn-lg mt-2"><i class="bi bi-house"></i> Back to Dashboard</a>
                     </div>
                 </div></div>
@@ -95,23 +98,33 @@
 
 {% block extra_scripts %}
 <script>
-let electionId = null;
-let positionsData = [];
+/* ============================================================
+   CEMS Ballot Page — Single Source of Truth State Model
+   ============================================================
+   ballotState (Map) is the ONLY source of truth for all ballot
+   selections. Every user interaction updates ballotState first,
+   then syncUI() renders the entire page from that state.
+   ============================================================ */
 
-(async function() {
+let electionId = null;
+let electionName = '';
+let positionsData = [];
+const ballotState = new Map(); // posId -> { candidates: Set<candId>, abstain: bool }
+
+// ── Initialization ──────────────────────────────────────────
+
+(async function init() {
     const user = CEMS.getUser();
     if (!user) { window.location.href = '/'; return; }
     document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
     if (user.is_admin) document.getElementById('nav-admin').classList.remove('d-none');
     document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
 
-    // Get election ID from query string or fall back to /mine/ endpoint
     const params = new URLSearchParams(window.location.search);
     let targetElectionId = params.get('election');
 
     try {
         if (!targetElectionId) {
-            // Fall back: find the first active eligible election
             const mineData = await CEMS.api('/api/elections/mine/');
             const active = (mineData.elections || []).find(e => e.status === 'active' && !e.has_voted);
             if (!active) {
@@ -126,11 +139,15 @@ let positionsData = [];
             targetElectionId = active.id;
         }
 
-        // Load ballot structure for the specific election
         const ballotData = await CEMS.api(`/api/elections/${targetElectionId}/ballot/`);
+
         if (!ballotData.success) {
-            CEMS.showToast(ballotData.error || 'Could not load ballot.', 'danger');
-            document.getElementById('no-election-alert').classList.remove('d-none');
+            if (ballotData.error && ballotData.error.toLowerCase().includes('not currently active')) {
+                showElectionClosed();
+            } else {
+                CEMS.showToast(ballotData.error || 'Could not load ballot.', 'danger');
+                document.getElementById('no-election-alert').classList.remove('d-none');
+            }
             return;
         }
 
@@ -140,82 +157,212 @@ let positionsData = [];
         }
 
         electionId = ballotData.election.id;
+        electionName = ballotData.election.name;
         positionsData = ballotData.positions || [];
-        document.getElementById('ballot-election-name').textContent = ballotData.election.name;
+        document.getElementById('ballot-election-name').textContent = electionName;
         document.getElementById('ballot-form').classList.remove('d-none');
 
+        initBallotState(positionsData);
         renderPositions(positionsData);
-        updateSummary();
+        syncUI();
 
     } catch (err) {
         if (err.message && (err.message.includes('403') || err.message.includes('404'))) {
             document.getElementById('no-election-alert').classList.remove('d-none');
+        } else if (err.message && err.message.includes('401')) {
+            showSessionExpired();
         } else {
-            CEMS.showToast('Error: ' + err.message, 'danger');
+            CEMS.showToast('Error loading ballot: ' + (err.message || 'Unknown error'), 'danger');
         }
     }
 })();
+
+// ── State Management ────────────────────────────────────────
+
+function initBallotState(positions) {
+    ballotState.clear();
+    positions.forEach(pos => {
+        ballotState.set(pos.id, { candidates: new Set(), abstain: false });
+    });
+}
+
+function selectCandidate(posId, candId) {
+    const state = ballotState.get(posId);
+    const pos = positionsData.find(p => p.id === posId);
+    if (!state || !pos) return;
+
+    if (pos.max_selections === 1) {
+        // Single-select: toggle or replace
+        if (state.candidates.has(candId)) {
+            state.candidates.clear();
+        } else {
+            state.candidates.clear();
+            state.candidates.add(candId);
+        }
+    } else {
+        // Multi-select: toggle
+        if (state.candidates.has(candId)) {
+            state.candidates.delete(candId);
+        } else {
+            if (state.candidates.size >= pos.max_selections) {
+                CEMS.showToast(`Maximum ${pos.max_selections} selections for this position.`, 'warning');
+                return;
+            }
+            state.candidates.add(candId);
+        }
+    }
+    // Selecting any candidate clears abstain
+    state.abstain = false;
+    syncUI();
+}
+
+function toggleAbstain(posId) {
+    const state = ballotState.get(posId);
+    if (!state) return;
+    state.abstain = !state.abstain;
+    if (state.abstain) {
+        // Abstain is mutually exclusive with all candidates
+        state.candidates.clear();
+    }
+    syncUI();
+}
+
+// ── UI Synchronization (renders EVERYTHING from ballotState) ─
+
+function syncUI() {
+    positionsData.forEach(pos => {
+        const state = ballotState.get(pos.id);
+        if (!state) return;
+
+        // Sync candidate card visuals
+        pos.candidates.forEach(cand => {
+            const card = document.getElementById('card-' + cand.id);
+            if (card) card.classList.toggle('selected', state.candidates.has(cand.id));
+        });
+
+        // Sync abstain card visual
+        const abstainCard = document.getElementById('abstain-card-' + pos.id);
+        if (abstainCard) abstainCard.classList.toggle('selected', state.abstain);
+
+        // Sync position counter badge
+        const counter = document.getElementById('counter-' + pos.id);
+        if (counter) {
+            if (state.abstain) {
+                counter.textContent = 'Abstain';
+                counter.className = 'badge-status badge-closed';
+            } else {
+                counter.textContent = state.candidates.size + ' / ' + pos.max_selections;
+                counter.className = state.candidates.size > 0 ? 'badge-status badge-active' : 'badge-status badge-draft';
+            }
+        }
+    });
+
+    updateSummary();
+}
+
+function updateSummary() {
+    const summary = document.getElementById('ballot-summary');
+    if (!summary) return;
+
+    let html = '';
+    let totalSelections = 0;
+    let totalAbstains = 0;
+
+    positionsData.forEach(pos => {
+        const state = ballotState.get(pos.id);
+        if (!state) return;
+        totalSelections += state.candidates.size;
+        if (state.abstain) totalAbstains++;
+
+        const names = Array.from(state.candidates).map(cid => {
+            const cand = pos.candidates.find(c => c.id === cid);
+            return cand ? CEMS.escapeHtml(cand.full_name) : cid;
+        });
+
+        let valueHtml;
+        if (state.abstain) {
+            valueHtml = '<span class="badge-status badge-closed"><i class="bi bi-dash-circle me-1"></i>Abstain</span>';
+        } else if (names.length > 0) {
+            valueHtml = names.map(n => '<span class="badge-status badge-active">' + n + '</span>').join(' ');
+        } else {
+            valueHtml = '<span class="text-muted" style="font-size:0.85rem"><i class="bi bi-exclamation-circle me-1"></i>No selection</span>';
+        }
+
+        html += '<div class="review-item">'
+            + '<span class="review-label">' + CEMS.escapeHtml(pos.title) + '</span>'
+            + '<span class="review-value">' + valueHtml + '</span>'
+            + '</div>';
+    });
+
+    summary.innerHTML = html;
+
+    const submitBtn = document.getElementById('submit-ballot-btn');
+    if (submitBtn) submitBtn.disabled = (totalSelections === 0 && totalAbstains === 0);
+}
+
+// ── Rendering ───────────────────────────────────────────────
 
 function renderPositions(positions) {
     const container = document.getElementById('positions-container');
     container.innerHTML = '';
 
     positions.forEach((pos, idx) => {
-        const isMulti = pos.max_selections > 1;
-        const inputType = isMulti ? 'checkbox' : 'radio';
-        const maxNote = isMulti ? `(select up to ${pos.max_selections})` : '(select one)';
-
+        const maxNote = pos.max_selections > 1
+            ? '(select up to ' + pos.max_selections + ')'
+            : '(select one)';
         const categoryBadge = getCategoryBadge(pos.category);
 
         let candidatesHtml = '';
         pos.candidates.forEach(cand => {
-            const inputName = isMulti ? `pos_${pos.id}_${cand.id}` : `pos_${pos.id}`;
             const photoHtml = cand.photo_url
-            ? `<div class="candidate-photo-area"><img src="${cand.photo_url}" class="candidate-photo" alt="${CEMS.escapeHtml(cand.full_name)}"></div>`
-            : `<div class="candidate-photo-area"><div class="candidate-photo-placeholder"><i class="bi bi-person-fill"></i></div></div>`;
+                ? '<div class="candidate-photo-area"><img src="' + CEMS.escapeHtml(cand.photo_url) + '" class="candidate-photo" alt="' + CEMS.escapeHtml(cand.full_name) + '" onerror="this.parentElement.innerHTML=\'<div class=candidate-photo-placeholder><i class=bi bi-person-fill></i></div>\'"></div>'
+                : '<div class="candidate-photo-area"><div class="candidate-photo-placeholder"><i class="bi bi-person-fill"></i></div></div>';
 
-        candidatesHtml += `
-            <div class="col-6 col-md-4 col-lg-3">
-                <label class="candidate-card d-block position-relative" for="cand_${cand.id}">
-                    <input type="${inputType}" class="d-none candidate-input"
-                           name="${inputName}" id="cand_${cand.id}"
-                           value="${cand.id}" data-position-id="${pos.id}"
-                           data-max="${pos.max_selections}"
-                           onchange="handleSelection(this)">
-                    ${photoHtml}
-                    <div class="candidate-info-area">
-                        <div class="cand-name">${CEMS.escapeHtml(cand.full_name)}</div>
-                        ${cand.party ? `<div class="cand-party">${CEMS.escapeHtml(cand.party)}</div>` : ''}
-                        ${cand.college ? `<div class="cand-college">${CEMS.escapeHtml(cand.college)}</div>` : ''}
-                    </div>
-                    <div class="candidate-check"><i class="bi bi-check-circle-fill"></i></div>
-                </label>
-            </div>`;
+            candidatesHtml += ''
+                + '<div class="col-6 col-md-4 col-lg-3">'
+                + '  <div class="candidate-card d-block position-relative" id="card-' + cand.id + '" onclick="selectCandidate(\'' + pos.id + '\',\'' + cand.id + '\')" role="button" tabindex="0" aria-label="Select ' + CEMS.escapeHtml(cand.full_name) + '">'
+                + '    ' + photoHtml
+                + '    <div class="candidate-info-area">'
+                + '      <div class="cand-name">' + CEMS.escapeHtml(cand.full_name) + '</div>'
+                + (cand.party ? '      <div class="cand-party">' + CEMS.escapeHtml(cand.party) + '</div>' : '')
+                + (cand.college ? '      <div class="cand-college">' + CEMS.escapeHtml(cand.college) + '</div>' : '')
+                + '    </div>'
+                + '    <div class="candidate-check"><i class="bi bi-check-circle-fill"></i></div>'
+                + '  </div>'
+                + '</div>';
         });
 
-        container.innerHTML += `
-            <div class="cems-card mb-3 position-card" id="position-${pos.id}">
-                <div class="cems-card-header d-flex align-items-center justify-content-between p-3">
-                    <div>
-                        <h5 class="mb-0">
-                            <span class="badge" style="background:var(--cems-primary);border-radius:1rem;font-size:0.75rem;padding:0.25rem 0.6rem;color:#fff;margin-right:0.25rem">${idx + 1}</span>
-                            ${CEMS.escapeHtml(pos.title)}
-                        </h5>
-                        <small class="text-muted">${maxNote} ${categoryBadge}</small>
-                    </div>
-                    <span class="badge-status badge-draft" id="counter-${pos.id}">0 / ${pos.max_selections}</span>
-                </div>
-                <div class="p-3">
-                    <div class="row g-2">${candidatesHtml}</div>
-                    <div class="mt-2 pt-2 border-top d-flex align-items-center gap-2">
-                        <input type="checkbox" class="form-check-input" id="abstain-${pos.id}"
-                               data-position-id="${pos.id}" onchange="handleAbstain(this)">
-                        <label class="form-check-label text-muted" for="abstain-${pos.id}" style="font-size:0.85rem;cursor:pointer">
-                            <i class="bi bi-dash-circle me-1"></i>Abstain from this position
-                        </label>
-                    </div>
-                </div>
-            </div>`;
+        // Abstain card — same visual treatment as candidate cards
+        candidatesHtml += ''
+            + '<div class="col-6 col-md-4 col-lg-3">'
+            + '  <div class="candidate-card abstain-card d-block position-relative" id="abstain-card-' + pos.id + '" onclick="toggleAbstain(\'' + pos.id + '\')" role="button" tabindex="0" aria-label="Abstain from ' + CEMS.escapeHtml(pos.title) + '">'
+            + '    <div class="candidate-photo-area">'
+            + '      <div class="candidate-photo-placeholder abstain-icon"><i class="bi bi-dash-circle"></i></div>'
+            + '    </div>'
+            + '    <div class="candidate-info-area">'
+            + '      <div class="cand-name">Abstain</div>'
+            + '      <div class="cand-party">Skip this position</div>'
+            + '    </div>'
+            + '    <div class="candidate-check"><i class="bi bi-dash-circle-fill"></i></div>'
+            + '  </div>'
+            + '</div>';
+
+        container.innerHTML += ''
+            + '<div class="cems-card mb-3 position-card" id="position-' + pos.id + '">'
+            + '  <div class="cems-card-header d-flex align-items-center justify-content-between p-3">'
+            + '    <div>'
+            + '      <h5 class="mb-0">'
+            + '        <span class="badge" style="background:var(--cems-primary);border-radius:1rem;font-size:0.75rem;padding:0.25rem 0.6rem;color:#fff;margin-right:0.25rem">' + (idx + 1) + '</span>'
+            + '        ' + CEMS.escapeHtml(pos.title)
+            + '      </h5>'
+            + '      <small class="text-muted">' + maxNote + ' ' + categoryBadge + '</small>'
+            + '    </div>'
+            + '    <span class="badge-status badge-draft" id="counter-' + pos.id + '">0 / ' + pos.max_selections + '</span>'
+            + '  </div>'
+            + '  <div class="p-3">'
+            + '    <div class="row g-2">' + candidatesHtml + '</div>'
+            + '  </div>'
+            + '</div>';
     });
 }
 
@@ -229,129 +376,34 @@ function getCategoryBadge(cat) {
     return map[cat] || '';
 }
 
-function handleSelection(input) {
-    const posId = input.dataset.positionId;
-    const maxSel = parseInt(input.dataset.max);
+// ── Submit Flow ─────────────────────────────────────────────
 
-    if (input.type === 'checkbox') {
-        const checked = document.querySelectorAll(`input[data-position-id="${posId}"]:checked`);
-        if (checked.length > maxSel) {
-            input.checked = false;
-            CEMS.showToast(`Maximum ${maxSel} selections for this position.`, 'warning');
-            return;
-        }
-    }
-
-    // Uncheck abstain when a candidate is selected
-    const abstainCb = document.getElementById(`abstain-${posId}`);
-    if (abstainCb && input.checked) {
-        abstainCb.checked = false;
-    }
-
-    // Update visual state
-    document.querySelectorAll(`input[data-position-id="${posId}"]`).forEach(inp => {
-        const card = inp.closest('.candidate-card');
-        if (inp.checked) {
-            card.classList.add('selected');
-        } else {
-            card.classList.remove('selected');
-        }
-    });
-
-    // Update counter
-    const count = document.querySelectorAll(`input[data-position-id="${posId}"]:checked`).length;
-    const counter = document.getElementById(`counter-${posId}`);
-    counter.textContent = `${count} / ${maxSel}`;
-    counter.className = count > 0 ? 'badge-status badge-active' : 'badge-status badge-draft';
-
-    updateSummary();
-}
-
-function handleAbstain(cb) {
-    const posId = cb.dataset.positionId;
-    if (cb.checked) {
-        // Deselect all candidates for this position
-        document.querySelectorAll(`input.candidate-input[data-position-id="${posId}"]`).forEach(inp => {
-            inp.checked = false;
-            const card = inp.closest('.candidate-card');
-            if (card) card.classList.remove('selected');
-        });
-        const pos = positionsData.find(p => p.id === posId);
-        const maxSel = pos ? pos.max_selections : 1;
-        const counter = document.getElementById(`counter-${posId}`);
-        counter.textContent = 'Abstain';
-        counter.className = 'badge-status badge-draft';
-    } else {
-        const pos = positionsData.find(p => p.id === posId);
-        const maxSel = pos ? pos.max_selections : 1;
-        const counter = document.getElementById(`counter-${posId}`);
-        counter.textContent = `0 / ${maxSel}`;
-        counter.className = 'badge-status badge-draft';
-    }
-    updateSummary();
-}
-
-function updateSummary() {
-    const summary = document.getElementById('ballot-summary');
-    let html = '';
-    let totalSelections = 0;
-    let totalAbstains = 0;
-
-    positionsData.forEach(pos => {
-        const abstainCb = document.getElementById(`abstain-${pos.id}`);
-        const isAbstain = abstainCb && abstainCb.checked;
-        const checked = document.querySelectorAll(`input.candidate-input[data-position-id="${pos.id}"]:checked`);
-        const names = Array.from(checked).map(inp => {
-            const cand = pos.candidates.find(c => c.id === inp.value);
-            return cand ? CEMS.escapeHtml(cand.full_name) : inp.value;
-        });
-        totalSelections += names.length;
-        if (isAbstain) totalAbstains++;
-
-        html += `<div class="info-list-item">
-            <span class="info-label">${CEMS.escapeHtml(pos.title)}</span>
-            <span>${isAbstain
-                ? '<span class="badge-status badge-draft"><i class="bi bi-dash-circle me-1"></i>Abstain</span>'
-                : (names.length > 0
-                    ? names.map(n => `<span class="badge-status badge-active">${n}</span>`).join(' ')
-                    : '<span class="text-muted" style="font-size:0.85rem">No selection</span>')
-            }</span>
-        </div>`;
-    });
-
-    summary.innerHTML = html;
-
-    const submitBtn = document.getElementById('submit-ballot-btn');
-    // Enable submit if at least one selection OR at least one explicit abstain
-    submitBtn.disabled = (totalSelections === 0 && totalAbstains === 0);
-}
-
-document.getElementById('ballot-form').addEventListener('submit', async (e) => {
+document.getElementById('ballot-form').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    if (!confirm('Are you sure you want to submit your ballot? This action cannot be undone.')) return;
-
     const btn = document.getElementById('submit-ballot-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Submitting...';
+    if (btn.disabled) return;
 
+    // Build payload from single source of truth
     const selections = [];
     positionsData.forEach(pos => {
-        const checked = document.querySelectorAll(`input.candidate-input[data-position-id="${pos.id}"]:checked`);
-        checked.forEach(inp => {
-            selections.push({
-                position_id: pos.id,
-                candidate_id: inp.value
-            });
+        const state = ballotState.get(pos.id);
+        if (!state) return;
+        state.candidates.forEach(candId => {
+            selections.push({ position_id: pos.id, candidate_id: candId });
         });
     });
 
     if (selections.length === 0) {
         CEMS.showToast('You must vote for at least one candidate. You cannot abstain from all positions.', 'warning');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-send-fill"></i> Submit Ballot';
         return;
     }
+
+    if (!confirm('Are you sure you want to submit your ballot? This action cannot be undone.')) return;
+
+    // Immediately disable to prevent double submission
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting\u2026';
 
     try {
         const res = await CEMS.api('/api/voting/cast/', {
@@ -363,17 +415,60 @@ document.getElementById('ballot-form').addEventListener('submit', async (e) => {
         });
 
         if (res.success) {
-            document.getElementById('ballot-id-display').textContent = res.ballot_id;
+            document.getElementById('ballot-id-display').textContent = res.ballot_id || '';
+            document.getElementById('success-election-line').textContent = 'Election: ' + electionName;
+            document.getElementById('success-timestamp-line').textContent = 'Submitted: ' + new Date().toLocaleString();
             new bootstrap.Modal(document.getElementById('successModal')).show();
+            // Hide the ballot form behind the modal
+            document.getElementById('ballot-form').classList.add('d-none');
         } else {
             CEMS.showToast(res.error || 'Failed to submit ballot.', 'danger');
             btn.disabled = false;
             btn.innerHTML = '<i class="bi bi-send-fill"></i> Submit Ballot';
         }
     } catch (err) {
-        CEMS.showToast('Error: ' + err.message, 'danger');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-send-fill"></i> Submit Ballot';
+        if (err.message && (err.message.includes('409') || err.message.includes('already'))) {
+            CEMS.showToast('Your ballot has already been submitted for this election.', 'warning');
+            btn.textContent = 'Already Submitted';
+            setTimeout(function() { window.location.href = '/dashboard/'; }, 2500);
+        } else if (err.message && err.message.includes('401')) {
+            showSessionExpired();
+        } else {
+            CEMS.showToast('Error: ' + (err.message || 'Network error. Please try again.'), 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-send-fill"></i> Submit Ballot';
+        }
+    }
+});
+
+// ── Error & Edge-Case Handling ──────────────────────────────
+
+function showSessionExpired() {
+    const container = document.querySelector('.col-lg-9');
+    if (!container) return;
+    const banner = document.createElement('div');
+    banner.className = 'session-expiry-banner mb-3';
+    banner.innerHTML = '<i class="bi bi-clock-history me-1"></i> Your session has expired. <a href="/" style="color:var(--cems-danger);font-weight:700">Please log in again.</a>';
+    container.prepend(banner);
+    document.getElementById('ballot-form').classList.add('d-none');
+}
+
+function showElectionClosed() {
+    document.getElementById('no-election-alert').innerHTML =
+        '<i class="bi bi-info-circle-fill"></i> '
+        + '<strong>Election is no longer active.</strong> The voting window may have closed. '
+        + '<a href="/dashboard/" style="color:var(--cems-info);font-weight:600">Return to Dashboard &rarr;</a>';
+    document.getElementById('no-election-alert').classList.remove('d-none');
+}
+
+// Keyboard support for card selection
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+        const focused = document.activeElement;
+        if (focused && focused.classList.contains('candidate-card')) {
+            e.preventDefault();
+            focused.click();
+        }
     }
 });
 </script>

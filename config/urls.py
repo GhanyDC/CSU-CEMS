@@ -3,6 +3,7 @@ CEMS URL Configuration.
 """
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
 
 from apps.accounts.urls import admin_auth_urlpatterns
@@ -11,8 +12,16 @@ from apps.elections.views import (
     publish_results, site_stats, start_election,
 )
 
+
+def health_check(request):
+    """Lightweight health endpoint for load balancers and Docker."""
+    return JsonResponse({"status": "ok"})
+
+
 urlpatterns: list = [
     path("admin/", admin.site.urls),
+    # Health check (no auth required)
+    path("api/health/", health_check, name="health-check"),
     # API endpoints — student auth
     path("api/auth/", include("apps.accounts.urls", namespace="accounts")),
     path("api/elections/", include("apps.elections.urls", namespace="elections")),

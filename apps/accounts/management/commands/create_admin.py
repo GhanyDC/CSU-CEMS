@@ -6,6 +6,8 @@ Usage:
     python manage.py create_admin --username operator1 --role electoral_board_operator --display-name "Operator One" --email op1@example.edu
 """
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -54,6 +56,11 @@ class Command(BaseCommand):
 
         if len(password) < 8:
             raise CommandError("Password must be at least 8 characters.")
+
+        try:
+            validate_password(password)
+        except ValidationError as e:
+            raise CommandError("Password validation failed: " + "; ".join(e.messages))
 
         user = User.objects.create_user(
             username=username,

@@ -1053,6 +1053,91 @@ footer {
 .result-bar-fill-new.winner { background: var(--cems-success); }
 .result-bar-fill-new.normal { background: var(--cems-primary); }
 
+/* ---------- Abstain Card (Ballot) ---------- */
+.abstain-card {
+    cursor: pointer;
+    border-style: dashed !important;
+}
+.abstain-card:hover {
+    border-color: var(--cems-warning) !important;
+    box-shadow: 0 4px 16px rgba(217,119,6,0.14);
+    transform: translateY(-2px);
+}
+.abstain-card.selected {
+    border-color: var(--cems-warning) !important;
+    background: var(--cems-warning-bg) !important;
+    border-style: solid !important;
+}
+.abstain-card .abstain-icon {
+    color: var(--cems-text-secondary);
+    font-size: 3rem;
+    background: linear-gradient(145deg, #FFFBEB, #FEF3C7);
+}
+.abstain-card.selected .abstain-icon {
+    color: var(--cems-warning);
+    background: linear-gradient(145deg, #FEF3C7, #FDE68A);
+}
+.abstain-card .candidate-check {
+    color: var(--cems-warning) !important;
+}
+.abstain-card.selected .candidate-check { display: block; }
+
+/* ---------- Review Section (Ballot) ---------- */
+.review-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--cems-border);
+    gap: 0.75rem;
+}
+.review-item:last-child { border-bottom: none; }
+.review-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--cems-text);
+    flex-shrink: 0;
+    min-width: 120px;
+}
+.review-value {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: flex-end;
+    text-align: right;
+}
+
+/* ---------- Enhanced Mobile Responsive ---------- */
+@media (max-width: 576px) {
+    .candidate-card { font-size: 0.82rem; }
+    .candidate-info-area { padding: 0.5rem 0.6rem 0.65rem; }
+    .candidate-info-area .cand-name { font-size: 0.82rem; }
+    .candidate-photo-placeholder { font-size: 2.5rem; }
+    .review-item { flex-direction: column; gap: 0.25rem; }
+    .review-value { justify-content: flex-start; text-align: left; }
+    .review-label { min-width: unset; }
+    .position-card .cems-card-header { flex-wrap: wrap; gap: 0.5rem; }
+    .position-card .cems-card-header > div:first-child { min-width: 0; }
+    .metric-card { padding: 0.75rem; }
+    .result-position-card { padding: 1rem; }
+    .result-position-header { flex-direction: column; gap: 0.5rem; }
+    .result-candidate-row { gap: 0.5rem; }
+    .result-candidate-info .name-row { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
+    .result-candidate-info .name-row .votes { font-size: 0.8rem; }
+    .welcome-banner { padding: 1.25rem 1rem; }
+    .welcome-banner h3 { font-size: 1.15rem; }
+    .dash-election-card { padding: 0.75rem 1rem; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .cems-navbar { padding: 0.5rem 0.75rem; }
+    #submit-ballot-btn { width: 100%; }
+    .btn-lg { padding: 0.65rem 1.25rem; font-size: 0.95rem; }
+}
+
+@media (max-width: 768px) {
+    .position-card .p-3 { padding: 0.75rem !important; }
+    .ballot-form-footer { flex-direction: column; text-align: center; }
+    .ballot-form-footer .btn { width: 100%; }
+}
+
 /* ---------- Utilities ---------- */
 .gap-2 { gap: 0.5rem; }
 .gap-3 { gap: 0.75rem; }
@@ -1061,4 +1146,16 @@ footer {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+}
+
+/* ---------- Session Expiry Banner ---------- */
+.session-expiry-banner {
+    background: var(--cems-danger-bg);
+    border: 1px solid var(--cems-danger);
+    color: var(--cems-danger);
+    border-radius: var(--cems-radius-sm);
+    padding: 0.75rem 1rem;
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 500;
 }

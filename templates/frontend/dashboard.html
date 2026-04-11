@@ -231,7 +231,12 @@
         }
 
     } catch (err) {
-        CEMS.showToast('Error loading dashboard: ' + err.message, 'danger');
+        if (err.message && err.message.includes('401')) {
+            CEMS.showToast('Session expired. Please log in again.', 'danger');
+            setTimeout(function() { window.location.href = '/'; }, 1500);
+        } else {
+            CEMS.showToast('Error loading dashboard: ' + (err.message || 'Unknown error'), 'danger');
+        }
     }
 })();
 </script>

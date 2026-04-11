@@ -53,6 +53,13 @@
                 <a href="/dashboard/" style="color:var(--cems-warning);font-weight:600">Dashboard &rarr;</a>
             </div>
 
+            <!-- No eligible -->
+            <div class="alert d-none" id="results-not-eligible" style="background:var(--cems-info-bg);border:1px solid var(--cems-info);color:var(--cems-info);border-radius:var(--cems-radius-sm)">
+                <i class="bi bi-info-circle-fill"></i>
+                <strong>No published results for you.</strong> You are not currently eligible for any election with published results.
+                <a href="/dashboard/" style="color:var(--cems-info);font-weight:600">Dashboard &rarr;</a>
+            </div>
+
             <!-- Results Container -->
             <div id="results-container" class="d-none">
                 <div class="row g-3 mb-4">
@@ -77,24 +84,22 @@
     if (user.is_admin) document.getElementById('nav-admin').classList.remove('d-none');
     document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
 
-    // Try to load results for a specific election
     const params = new URLSearchParams(window.location.search);
     let targetElectionId = params.get('election');
 
     try {
         if (!targetElectionId) {
-            // Fall back: find the first published eligible election
             const mineData = await CEMS.api('/api/elections/mine/');
             const published = (mineData.elections || []).find(e => e.status === 'published');
             if (!published) {
-                document.getElementById('results-not-available').classList.remove('d-none');
+                document.getElementById('results-not-eligible').classList.remove('d-none');
                 document.getElementById('results-election-name').textContent = '';
                 return;
             }
             targetElectionId = published.id;
         }
 
-        const res = await CEMS.api(`/api/elections/results/${targetElectionId}/`);
+        const res = await CEMS.api('/api/elections/results/' + targetElectionId + '/');
 
         if (!res.success) {
             document.getElementById('results-not-available').classList.remove('d-none');
@@ -107,13 +112,10 @@
 
         const positions = res.positions || [];
         let totalCandidates = 0;
-
-        positions.forEach(pos => {
-            const results = pos.results || [];
-            totalCandidates += results.length;
+        positions.forEach(function(pos) {
+            totalCandidates += (pos.results || []).length;
         });
 
-        // Use turnout data from the enhanced results endpoint
         const totalBallots = res.total_ballots || 0;
         const totalEligible = res.total_eligible || 0;
         const turnoutPct = res.turnout_percentage || '0.0';
@@ -121,20 +123,21 @@
         document.getElementById('total-votes-count').textContent = totalBallots;
         document.getElementById('total-positions-count').textContent = positions.length;
         document.getElementById('total-candidates-count').textContent = totalCandidates;
-
-        // Update turnout display
-        if (document.getElementById('turnout-percentage')) {
-            document.getElementById('turnout-percentage').textContent = `${turnoutPct}%`;
-            document.getElementById('turnout-detail').textContent = `${totalBallots} of ${totalEligible} eligible`;
-        }
+        document.getElementById('turnout-percentage').textContent = turnoutPct + '%';
+        document.getElementById('turnout-detail').textContent = totalBallots + ' of ' + totalEligible + ' eligible';
 
         renderResults(positions, totalBallots);
 
     } catch (err) {
-        if (err.message && (err.message.includes('403') || err.message.includes('404'))) {
+        if (err.message && err.message.includes('401')) {
+            document.getElementById('results-election-name').textContent = '';
+            document.getElementById('results-not-available').innerHTML =
+                '<i class="bi bi-clock-history"></i> <strong>Session expired.</strong> <a href="/" style="color:var(--cems-warning);font-weight:600">Please log in again.</a>';
+            document.getElementById('results-not-available').classList.remove('d-none');
+        } else if (err.message && (err.message.includes('403') || err.message.includes('404'))) {
             document.getElementById('results-not-available').classList.remove('d-none');
         } else {
-            CEMS.showToast('Error loading results: ' + err.message, 'danger');
+            CEMS.showToast('Error loading results: ' + (err.message || 'Unknown error'), 'danger');
         }
         document.getElementById('results-election-name').textContent = '';
     }
@@ -144,84 +147,83 @@ function renderResults(positions, totalBallots) {
     const container = document.getElementById('positions-results');
     container.innerHTML = '';
 
-    positions.forEach((pos, idx) => {
+    positions.forEach(function(pos, idx) {
         const results = pos.results || [];
-        const maxVotes = results.length > 0 ? Math.max(...results.map(r => r.votes || 0)) : 0;
-        const posTotal = results.reduce((s, r) => s + (r.votes || 0), 0);
+        const maxVotes = results.length > 0 ? Math.max.apply(null, results.map(function(r) { return r.votes || 0; })) : 0;
+        const posTotal = results.reduce(function(s, r) { return s + (r.votes || 0); }, 0);
 
         const categoryBadge = getCategoryBadge(pos.category);
         const winnerInfo = pos.winner
-            ? `<span class="badge-status badge-active"><i class="bi bi-trophy-fill"></i> ${CEMS.escapeHtml(pos.winner)}</span>`
+            ? '<span class="badge-status badge-active"><i class="bi bi-trophy-fill"></i> ' + CEMS.escapeHtml(pos.winner) + '</span>'
             : '';
 
         let thresholdHtml = '';
         if (pos.threshold_50_plus_1 !== undefined) {
-            thresholdHtml = `<small class="text-muted d-block mt-1">50%+1 Threshold: <strong>${pos.threshold_50_plus_1}</strong> votes (of ${pos.threshold_denominator} eligible)</small>`;
+            thresholdHtml = '<small class="text-muted d-block mt-1">50%+1 Threshold: <strong>' + pos.threshold_50_plus_1 + '</strong> votes (of ' + pos.threshold_denominator + ' eligible)</small>';
         }
 
         let abstainHtml = '';
         if (pos.abstain_count !== undefined && pos.abstain_count > 0) {
-            abstainHtml = `<div class="d-flex align-items-center gap-2 mt-2 py-2 px-3" style="background:var(--cems-surface);border-radius:var(--cems-radius-sm);font-size:0.83rem;color:var(--cems-text-secondary)">
-                <i class="bi bi-dash-circle"></i>
-                <span><strong>${pos.abstain_count}</strong> abstain${pos.abstain_count !== 1 ? 's' : ''}</span>
-                <span class="ms-auto">${pos.total_ballots ? ((pos.abstain_count / pos.total_ballots) * 100).toFixed(1) : 0}% of ballots</span>
-            </div>`;
+            const abstainPct = pos.total_ballots ? ((pos.abstain_count / pos.total_ballots) * 100).toFixed(1) : 0;
+            abstainHtml = '<div class="d-flex align-items-center gap-2 mt-2 py-2 px-3" style="background:var(--cems-surface,#F9FAFB);border-radius:var(--cems-radius-sm);font-size:0.83rem;color:var(--cems-text-secondary)">'
+                + '<i class="bi bi-dash-circle"></i>'
+                + '<span><strong>' + pos.abstain_count + '</strong> abstain' + (pos.abstain_count !== 1 ? 's' : '') + '</span>'
+                + '<span class="ms-auto">' + abstainPct + '% of ballots</span>'
+                + '</div>';
         }
 
         let candidatesHtml = '';
-        results.forEach((cand) => {
+        results.forEach(function(cand) {
             const pct = posTotal > 0 ? ((cand.votes / posTotal) * 100).toFixed(1) : 0;
             const isWinner = cand.votes === maxVotes && cand.votes > 0;
             const winBadge = isWinner ? ' <i class="bi bi-trophy-fill" style="color:var(--cems-accent)"></i>' : '';
 
             const photoHtml = cand.photo_url
-                ? `<img src="${CEMS.escapeHtml(cand.photo_url)}" alt="" class="candidate-photo" style="width:40px;height:40px">`
-                : `<span class="candidate-photo-placeholder" style="width:40px;height:40px;font-size:0.85rem"><i class="bi bi-person"></i></span>`;
+                ? '<img src="' + CEMS.escapeHtml(cand.photo_url) + '" alt="" class="candidate-photo" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.outerHTML=\'<span class=candidate-photo-placeholder style=width:40px;height:40px;font-size:0.85rem;border-radius:50%;flex-shrink:0><i class=bi bi-person></i></span>\'">'
+                : '<span class="candidate-photo-placeholder" style="width:40px;height:40px;font-size:0.85rem;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:#F3F4F6;color:#B0B7C3"><i class="bi bi-person"></i></span>';
 
-            const partyHtml = cand.party ? `<span class="text-muted" style="font-size:0.75rem">${CEMS.escapeHtml(cand.party)}</span>` : '';
-            const collegeHtml = cand.college ? `<span class="text-muted" style="font-size:0.75rem">${CEMS.escapeHtml(cand.college)}</span>` : '';
-            const metaSep = partyHtml && collegeHtml ? ' · ' : '';
+            const partyHtml = cand.party ? '<span class="text-muted" style="font-size:0.75rem">' + CEMS.escapeHtml(cand.party) + '</span>' : '';
+            const collegeHtml = cand.college ? '<span class="text-muted" style="font-size:0.75rem">' + CEMS.escapeHtml(cand.college) + '</span>' : '';
+            const metaSep = partyHtml && collegeHtml ? ' &middot; ' : '';
 
-            candidatesHtml += `
-                <div class="result-candidate-row">
-                    ${photoHtml}
-                    <div class="result-candidate-info">
-                        <div class="name-row">
-                            <span class="name">${CEMS.escapeHtml(cand.full_name || cand.candidate || '')}${winBadge}</span>
-                            <span class="votes">${cand.votes} vote${cand.votes !== 1 ? 's' : ''} (${pct}%)</span>
-                        </div>
-                        ${partyHtml || collegeHtml ? `<div style="font-size:0.75rem;color:var(--cems-text-secondary);margin-bottom:0.3rem">${partyHtml}${metaSep}${collegeHtml}</div>` : ''}
-                        <div class="result-bar-track">
-                            <div class="result-bar-fill-new ${isWinner ? 'winner' : 'normal'}" style="width:${pct}%"></div>
-                        </div>
-                    </div>
-                </div>`;
+            candidatesHtml += ''
+                + '<div class="result-candidate-row">'
+                + photoHtml
+                + '<div class="result-candidate-info">'
+                + '  <div class="name-row">'
+                + '    <span class="name">' + CEMS.escapeHtml(cand.full_name || cand.candidate || '') + winBadge + '</span>'
+                + '    <span class="votes">' + cand.votes + ' vote' + (cand.votes !== 1 ? 's' : '') + ' (' + pct + '%)</span>'
+                + '  </div>'
+                + (partyHtml || collegeHtml ? '<div style="font-size:0.75rem;color:var(--cems-text-secondary);margin-bottom:0.3rem">' + partyHtml + metaSep + collegeHtml + '</div>' : '')
+                + '  <div class="result-bar-track"><div class="result-bar-fill-new ' + (isWinner ? 'winner' : 'normal') + '" style="width:' + pct + '%"></div></div>'
+                + '</div>'
+                + '</div>';
         });
 
-        container.innerHTML += `
-            <div class="result-position-card">
-                <div class="result-position-header">
-                    <div>
-                        <h5 class="mb-1" style="font-weight:700">
-                            <span class="badge" style="background:var(--cems-primary);border-radius:1rem;font-size:0.7rem;padding:0.2rem 0.55rem;color:#fff;margin-right:0.35rem">${idx + 1}</span>
-                            ${CEMS.escapeHtml(pos.position || pos.title || '')}
-                        </h5>
-                        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem">
-                            ${categoryBadge}
-                            <span class="text-muted" style="font-size:0.8rem">${posTotal} total votes</span>
-                        </div>
-                        ${thresholdHtml}
-                    </div>
-                    <div>${winnerInfo}</div>
-                </div>
-                ${candidatesHtml || '<p class="text-muted mb-0">No candidates or votes.</p>'}
-                ${abstainHtml}
-            </div>`;
+        container.innerHTML += ''
+            + '<div class="result-position-card">'
+            + '  <div class="result-position-header">'
+            + '    <div>'
+            + '      <h5 class="mb-1" style="font-weight:700">'
+            + '        <span class="badge" style="background:var(--cems-primary);border-radius:1rem;font-size:0.7rem;padding:0.2rem 0.55rem;color:#fff;margin-right:0.35rem">' + (idx + 1) + '</span>'
+            + '        ' + CEMS.escapeHtml(pos.position || pos.title || '')
+            + '      </h5>'
+            + '      <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem;flex-wrap:wrap">'
+            + '        ' + categoryBadge
+            + '        <span class="text-muted" style="font-size:0.8rem">' + posTotal + ' total votes</span>'
+            + '      </div>'
+            + thresholdHtml
+            + '    </div>'
+            + '    <div>' + winnerInfo + '</div>'
+            + '  </div>'
+            + (candidatesHtml || '<p class="text-muted mb-0">No candidates or votes.</p>')
+            + abstainHtml
+            + '</div>';
     });
 }
 
 function getCategoryBadge(cat) {
-    const map = {
+    var map = {
         'executive': '<span class="badge-type" style="background:var(--cems-danger-bg);color:var(--cems-danger)">Executive</span>',
         'senate': '<span class="badge-type" style="background:#e0f0ff;color:var(--cems-info)">Senate</span>',
         'house_college': '<span class="badge-type" style="background:var(--cems-success-bg);color:var(--cems-success)">College Rep</span>',
