@@ -60,3 +60,17 @@ coverage.xml
 PROJECT_BRIEFING_FOR_CHATGPT.md
 CHATGPT_CODEBASE_REFERENCE.md
 STRENGTHENING_AND_PILOT_GUIDE.md
+
+# Deploy-only repository cleanup
+docs/
+README.md
+static/img/README.md
+MANUAL_*.md
+SETUP_GUIDE.md
+tests/
+conftest.py
+pytest.ini
+.pre-commit-config.yaml
+pyproject.toml
+setup.cfg
+run_pilot_test.py
