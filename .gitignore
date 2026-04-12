@@ -63,7 +63,6 @@ STRENGTHENING_AND_PILOT_GUIDE.md
 
 # Deploy-only repository cleanup
 docs/
-README.md
 static/img/README.md
 MANUAL_*.md
 SETUP_GUIDE.md
