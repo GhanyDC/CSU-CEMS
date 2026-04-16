@@ -63,6 +63,7 @@ class ElectionSetupService:
         name: str,
         start_time: datetime,
         end_time: datetime,
+        voting_mode: str = Election.VotingMode.ONLINE,
     ) -> Election:
         """
         Create a campus election with all constitutional positions.
@@ -72,12 +73,16 @@ class ElectionSetupService:
         if not name or not name.strip():
             raise ElectionSetupError("Election name is required.")
 
+        if voting_mode not in {choice[0] for choice in Election.VotingMode.choices}:
+            raise ElectionSetupError(f"Invalid voting mode '{voting_mode}'.")
+
         election = Election.objects.create(
             name=name.strip(),
             election_type=Election.ElectionType.CAMPUS,
             start_time=start_time,
             end_time=end_time,
             status=Election.Status.DRAFT,
+            voting_mode=voting_mode,
         )
 
         # Fixed positions from template
@@ -120,6 +125,7 @@ class ElectionSetupService:
         start_time: datetime,
         end_time: datetime,
         colleges: list[str] | None = None,
+        voting_mode: str = Election.VotingMode.ONLINE,
     ) -> list[Election]:
         """
         Bulk-create college elections for all (or specified) official colleges.
@@ -136,6 +142,8 @@ class ElectionSetupService:
         """
         if not name_prefix or not name_prefix.strip():
             raise ElectionSetupError("Election name prefix is required.")
+        if voting_mode not in {choice[0] for choice in Election.VotingMode.choices}:
+            raise ElectionSetupError(f"Invalid voting mode '{voting_mode}'.")
 
         target_colleges = colleges or list(OFFICIAL_COLLEGES)
 
@@ -153,6 +161,7 @@ class ElectionSetupService:
                 start_time=start_time,
                 end_time=end_time,
                 status=Election.Status.DRAFT,
+                voting_mode=voting_mode,
             )
 
             for tmpl in COLLEGE_TEMPLATE:
@@ -165,6 +174,21 @@ class ElectionSetupService:
             name_prefix.strip(), len(elections),
         )
         return elections
+
+    @staticmethod
+    @transaction.atomic
+    def update_draft_election_voting_mode(
+        election: Election,
+        voting_mode: str,
+    ) -> Election:
+        """Allow changing the voting mode only while the election is still draft."""
+        if election.status != Election.Status.DRAFT:
+            raise ElectionSetupError("Voting mode can only be changed while the election is in Draft status.")
+        if voting_mode not in {choice[0] for choice in Election.VotingMode.choices}:
+            raise ElectionSetupError(f"Invalid voting mode '{voting_mode}'.")
+        election.voting_mode = voting_mode
+        election.save(update_fields=["voting_mode", "updated_at"])
+        return election
 
 
 # ---------------------------------------------------------------------------

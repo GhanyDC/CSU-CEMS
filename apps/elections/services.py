@@ -2,14 +2,15 @@
 Election services — lifecycle management, result computation, and voter roll management.
 """
 import logging
-from collections import defaultdict
 
-from django.db import models, transaction
+from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
+from apps.elections.constants import OFFICIAL_COLLEGES
+from apps.elections.hybrid_services import HybridElectionService
 from apps.elections.models import (
     Candidate,
     Election,
@@ -138,6 +139,11 @@ class ElectionLifecycleService:
 
     @classmethod
     def publish_results(cls, election: Election, **kwargs) -> Election:
+        fresh = Election.objects.get(pk=election.pk)
+        if fresh.is_hybrid and not HybridElectionService.has_required_imports(fresh):
+            raise ElectionNotReadyError(
+                "Cannot publish hybrid election until both onsite turnout and onsite tally imports are completed."
+            )
         return cls.transition(election, Election.Status.PUBLISHED, **kwargs)
 
 
@@ -158,123 +164,174 @@ class ResultService:
 
     @staticmethod
     def compute_results(election: Election) -> dict:
-        """
-        Compute structured results for a published election.
-
-        Returns:
-            A dict with the structure:
-            {
-                "election_id": "...",
-                "election_name": "...",
-                "positions": [
-                    {
-                        "position_id": "...",
-                        "position": "President",
-                        "category": "executive",
-                        "total_votes": 1200,
-                        "max_selections": 1,
-                        "winner": "..." | null,
-                        "status": "won" | "no_majority",
-                        "results": [
-                            {"candidate_id": "...", "candidate": "...", "party": "...", "votes": 650},
-                        ]
-                    },
-                ]
-            }
-        """
-        positions = (
-            Position.objects.filter(election=election)
-            .order_by("order", "title")
+        positions = Position.objects.filter(election=election).order_by("order", "title")
+        turnout_context = HybridElectionService.compute_turnout_breakdown(election)
+        result_context = HybridElectionService.get_position_result_context(election)
+        total_eligible = turnout_context["total_eligible"]
+        has_official_onsite_results = result_context["has_official_onsite_results"]
+        total_ballots = (
+            turnout_context["combined_voted"]
+            if has_official_onsite_results
+            else turnout_context["online_voted"]
         )
 
-        positions_data = []
-        for position in positions:
-            position_result = ResultService._compute_position_result(position)
-            positions_data.append(position_result)
+        eligible_by_college = {}
+        if election.is_campus:
+            eligible_by_college = {
+                row["college_snapshot"]: row["count"]
+                for row in (
+                    EligibleVoter.objects
+                    .filter(election=election)
+                    .values("college_snapshot")
+                    .annotate(count=Count("id"))
+                )
+            }
+
+        positions_data = [
+            ResultService._compute_position_result(
+                position,
+                total_ballots_in_election=total_ballots,
+                total_eligible=total_eligible,
+                eligible_by_college=eligible_by_college,
+                result_context=result_context,
+            )
+            for position in positions
+        ]
 
         return {
             "election_id": str(election.pk),
             "election_name": election.name,
+            "voting_mode": election.voting_mode,
+            "counting_mode": (
+                "combined_official"
+                if has_official_onsite_results
+                else ("online_partial" if election.is_hybrid else "online_only")
+            ),
+            "total_eligible": total_eligible,
+            "total_ballots": total_ballots,
+            "online_ballots": turnout_context["online_voted"],
+            "onsite_ballots": turnout_context["onsite_voted"],
+            "combined_ballots": turnout_context["combined_voted"],
+            "turnout_percentage": round(
+                (total_ballots / total_eligible * 100) if total_eligible > 0 else 0, 2
+            ),
             "positions": positions_data,
+            "hybrid": (
+                HybridElectionService.build_hybrid_summary(election)
+                if election.is_hybrid
+                else None
+            ),
         }
 
     @staticmethod
-    def _compute_position_result(position: Position) -> dict:
-        """Compute results for a single position, including abstain count."""
-        # Count votes per candidate via DB aggregation
-        vote_counts = (
-            BallotSelection.objects
-            .filter(position=position)
-            .values("candidate__id", "candidate__full_name", "candidate__party", "candidate__college", "candidate__photo")
-            .annotate(votes=Count("id"))
-            .order_by("-votes")
-        )
+    def _compute_position_result(
+        position: Position,
+        *,
+        total_ballots_in_election: int,
+        total_eligible: int,
+        eligible_by_college: dict[str, int] | None = None,
+        result_context: dict | None = None,
+    ) -> dict:
+        """Compute results for a single position, including source-specific tallies."""
+        context = result_context or {}
+        online_vote_counts = context.get("online_vote_counts", {})
+        onsite_vote_counts = context.get("onsite_vote_counts", {})
+        online_position_participation = context.get("online_position_participation", {})
+        has_official_onsite_results = context.get("has_official_onsite_results", False)
 
-        results = [
-            {
-                "candidate_id": str(row["candidate__id"]),
-                "candidate": row["candidate__full_name"],
-                "party": row["candidate__party"],
-                "college": row["candidate__college"] or "",
-                "photo_url": f"/media/{row['candidate__photo']}" if row.get("candidate__photo") else None,
-                "votes": row["votes"],
-            }
-            for row in vote_counts
-        ]
-
-        # Include candidates with zero votes
-        voted_ids = {r["candidate_id"] for r in results}
-        zero_vote_candidates = (
+        candidates = list(
             Candidate.objects
             .filter(position=position, is_active=True)
-            .exclude(pk__in=voted_ids)
             .order_by("full_name")
         )
-        for c in zero_vote_candidates:
+        results = []
+        for candidate in candidates:
+            online_votes = int(online_vote_counts.get(str(candidate.pk), 0) or 0)
+            onsite_votes = int(onsite_vote_counts.get(str(candidate.pk), 0) or 0)
+            combined_votes = online_votes + onsite_votes
+            display_votes = combined_votes if has_official_onsite_results else online_votes
             results.append(
                 {
-                    "candidate_id": str(c.pk),
-                    "candidate": c.full_name,
-                    "party": c.party,
-                    "college": c.college or "",
-                    "photo_url": c.photo.url if c.photo else None,
-                    "votes": 0,
+                    "candidate_id": str(candidate.pk),
+                    "candidate": candidate.full_name,
+                    "full_name": candidate.full_name,
+                    "party": candidate.party,
+                    "college": candidate.college or "",
+                    "photo_url": candidate.photo.url if candidate.photo else None,
+                    "votes": display_votes,
+                    "online_votes": online_votes,
+                    "onsite_votes": onsite_votes,
+                    "combined_votes": combined_votes,
                 }
             )
 
+        results.sort(key=lambda row: (-row["votes"], row["candidate"].lower()))
+
         total_votes = sum(r["votes"] for r in results)
+        online_total_votes = sum(r["online_votes"] for r in results)
+        onsite_total_votes = sum(r["onsite_votes"] for r in results)
+        combined_total_votes = sum(r["combined_votes"] for r in results)
+        candidate_count = len(results)
+        single_candidate_threshold_applies = candidate_count == 1
+
+        threshold_denominator, threshold_scope = ResultService._get_position_threshold_context(
+            position,
+            results,
+            total_eligible=total_eligible,
+            eligible_by_college=eligible_by_college or {},
+        )
+        threshold_50_plus_1 = (
+            (threshold_denominator // 2) + 1 if threshold_denominator > 0 else 0
+        )
 
         # Determine winner(s) based on category
         winner, status = ResultService._determine_winner(
-            position, results, total_votes,
+            position,
+            results,
+            total_votes,
+            single_candidate_threshold_applies=single_candidate_threshold_applies,
+            threshold_50_plus_1=threshold_50_plus_1,
         )
 
-        # Compute abstain count: ballots that did NOT select any candidate for this position
-        total_ballots_in_election = Ballot.objects.filter(election=position.election).count()
-        ballots_with_selection = (
-            BallotSelection.objects
-            .filter(position=position)
-            .values("ballot_id")
-            .distinct()
-            .count()
+        ballots_with_selection = int(
+            online_position_participation.get(str(position.pk), 0) or 0
         )
-        abstain_count = max(0, total_ballots_in_election - ballots_with_selection)
-
-        # Position participation = ballots that selected at least one candidate
-        position_participation = ballots_with_selection
+        if has_official_onsite_results:
+            abstain_count = None
+            position_participation = None
+            participation_note = (
+                "Position-level abstain counts are hidden once onsite aggregate tallies "
+                "are combined because per-position onsite abstentions are not imported."
+            )
+        else:
+            abstain_count = max(0, total_ballots_in_election - ballots_with_selection)
+            position_participation = ballots_with_selection
+            participation_note = ""
 
         return {
             "position_id": str(position.pk),
             "position": position.title,
             "category": position.category,
             "total_votes": total_votes,
+            "online_total_votes": online_total_votes,
+            "onsite_total_votes": onsite_total_votes,
+            "combined_total_votes": combined_total_votes,
             "max_selections": position.max_selections,
             "winner": winner,
             "status": status,
+            "candidate_count": candidate_count,
+            "single_candidate_threshold_applies": single_candidate_threshold_applies,
             "results": results,
             "abstain_count": abstain_count,
             "position_participation": position_participation,
             "total_ballots": total_ballots_in_election,
+            "counting_mode": (
+                "combined_official" if has_official_onsite_results else "online_only"
+            ),
+            "participation_note": participation_note,
+            "threshold_denominator": threshold_denominator,
+            "threshold_50_plus_1": threshold_50_plus_1,
+            "threshold_scope": threshold_scope,
         }
 
     @staticmethod
@@ -282,6 +339,9 @@ class ResultService:
         position: Position,
         results: list[dict],
         total_votes: int,
+        *,
+        single_candidate_threshold_applies: bool = False,
+        threshold_50_plus_1: int = 0,
     ) -> tuple[str | list[str] | None, str]:
         """
         Apply the appropriate winning rule for this position's category.
@@ -289,8 +349,17 @@ class ResultService:
         Returns:
             (winner, status) where:
             - winner is a name string, list of names, or None
-            - status is "won", "no_majority", or "no_votes"
+            - status is "won", "no_majority", "threshold_not_met", or "no_votes"
         """
+        if not results:
+            return None, "no_votes"
+
+        if single_candidate_threshold_applies:
+            return ResultService._single_candidate_threshold_rule(
+                results[0],
+                threshold_50_plus_1,
+            )
+
         if total_votes == 0:
             return None, "no_votes"
 
@@ -326,6 +395,23 @@ class ResultService:
         return None, "no_majority"
 
     @staticmethod
+    def _single_candidate_threshold_rule(
+        result: dict,
+        threshold_50_plus_1: int,
+    ) -> tuple[str | None, str]:
+        """
+        Any position with exactly one active candidate requires 50% + 1 of the
+        registered voters in that position's scope.
+        """
+        if result["votes"] <= 0:
+            return None, "no_votes"
+
+        if threshold_50_plus_1 > 0 and result["votes"] >= threshold_50_plus_1:
+            return result["candidate"], "won"
+
+        return None, "threshold_not_met"
+
+    @staticmethod
     def _multi_seat_rule(
         results: list[dict], seats: int,
     ) -> tuple[list[str], str]:
@@ -345,67 +431,74 @@ class ResultService:
         return None, "no_votes"
 
     @staticmethod
+    def _get_position_threshold_context(
+        position: Position,
+        results: list[dict],
+        *,
+        total_eligible: int,
+        eligible_by_college: dict[str, int],
+    ) -> tuple[int, str]:
+        """
+        Return the denominator and scope label for the position's 50%+1 rule.
+        """
+        if position.category == Position.Category.HOUSE_COLLEGE and position.election.is_campus:
+            represented_college = ResultService._resolve_house_college_scope(
+                position,
+                results,
+            )
+            return eligible_by_college.get(represented_college, 0), represented_college
+
+        if position.election.is_college:
+            return total_eligible, position.election.college or "college election"
+
+        return total_eligible, "campus election"
+
+    @staticmethod
+    def _resolve_house_college_scope(position: Position, results: list[dict]) -> str:
+        """
+        Resolve which college voter roll should be used for a campus college-rep seat.
+        """
+        candidate_colleges = {
+            (row.get("college") or "").strip()
+            for row in results
+            if (row.get("college") or "").strip()
+        }
+        if len(candidate_colleges) == 1:
+            return next(iter(candidate_colleges))
+
+        active_candidate_colleges = {
+            college.strip()
+            for college in Candidate.objects.filter(position=position, is_active=True)
+            .exclude(college__isnull=True)
+            .exclude(college="")
+            .values_list("college", flat=True)
+            if college and college.strip()
+        }
+        if len(active_candidate_colleges) == 1:
+            return next(iter(active_candidate_colleges))
+
+        title = (position.title or "").strip()
+        short_name = ""
+        for separator in (" - ", " – ", "â€“", "—"):
+            if separator in title:
+                short_name = title.split(separator, 1)[1].strip()
+                break
+
+        if not short_name and title.lower().startswith("college representative"):
+            short_name = title[len("College Representative"):].strip(" -–â€“—")
+
+        short_name_lower = short_name.lower()
+        for official_college in OFFICIAL_COLLEGES:
+            official_lower = official_college.lower()
+            short_official = official_college.replace("College of ", "").strip().lower()
+            if short_name_lower in {official_lower, short_official}:
+                return official_college
+
+        return short_name
+
+    @staticmethod
     def compute_results_with_thresholds(election: Election) -> dict:
-        """
-        Like compute_results but adds 50%+1 threshold info per position.
-
-        Threshold denominator rules (from KNOWN_DECISIONS_COMPACT):
-        - Campus positions: total approved campus voter roll
-        - College election positions: approved voter roll of that college election
-        - College Representatives in campus election: approved voters of represented college
-        """
-        base = ResultService.compute_results(election)
-
-        # Get total eligible voter count
-        total_eligible = EligibleVoter.objects.filter(election=election).count()
-        total_ballots = Ballot.objects.filter(election=election).count()
-
-        # For campus elections, also get per-college counts
-        college_counts = {}
-        if election.is_campus:
-            college_counts = {
-                row["college_snapshot"]: row["count"]
-                for row in (
-                    EligibleVoter.objects
-                    .filter(election=election)
-                    .values("college_snapshot")
-                    .annotate(count=Count("id"))
-                )
-            }
-
-        for pos_data in base["positions"]:
-            # Determine the right denominator for 50%+1
-            category = pos_data["category"]
-            if category == Position.Category.HOUSE_COLLEGE:
-                # College rep in campus election: denominator = voters of that college
-                # Extract college name from position title
-                pos_obj = Position.objects.get(pk=pos_data["position_id"])
-                college_name = ""
-                if pos_obj.title.startswith("College Representative"):
-                    # title format: "College Representative – ShortName"
-                    parts = pos_obj.title.split("–")
-                    if len(parts) > 1:
-                        short = parts[1].strip()
-                        # Find the official college matching this short name
-                        from apps.elections.constants import OFFICIAL_COLLEGES
-                        for oc in OFFICIAL_COLLEGES:
-                            if oc.replace("College of ", "") == short or oc == short:
-                                college_name = oc
-                                break
-                denominator = college_counts.get(college_name, 0)
-            else:
-                denominator = total_eligible
-
-            threshold = (denominator // 2) + 1 if denominator > 0 else 0
-            pos_data["threshold_denominator"] = denominator
-            pos_data["threshold_50_plus_1"] = threshold
-
-        base["total_eligible"] = total_eligible
-        base["total_ballots"] = total_ballots
-        base["turnout_percentage"] = round(
-            (total_ballots / total_eligible * 100) if total_eligible > 0 else 0, 2
-        )
-        return base
+        return ResultService.compute_results(election)
 
 
 # ---------------------------------------------------------------------------
@@ -420,61 +513,39 @@ class TurnoutService:
 
     @staticmethod
     def compute_turnout(election: Election) -> dict:
-        """
-        Return turnout statistics for an election.
-
-        Returns:
-            {
-                "election_id": "...",
-                "election_name": "...",
-                "status": "...",
-                "total_eligible": int,
-                "total_voted": int,
-                "turnout_percentage": float,
-                "by_college": [
-                    {"college": "...", "eligible": int, "voted": int, "percentage": float},
-                    ...
-                ],
-            }
-        """
-        total_eligible = EligibleVoter.objects.filter(election=election).count()
-        total_voted = Ballot.objects.filter(election=election).count()
-
-        # Per-college breakdown from voter roll
-        college_eligible = (
-            EligibleVoter.objects
-            .filter(election=election)
-            .values("college_snapshot")
-            .annotate(count=Count("id"))
-        )
-        eligible_by_college = {
-            row["college_snapshot"]: row["count"] for row in college_eligible
-        }
-
-        # Per-college ballot counts require joining through hashed IDs
-        # Since we can't directly join, count ballots per election and compute
-        # We use the total as the top-level metric; per-college for eligible only
-        # (per-college voted is complex due to hashing; we report eligible per college)
-        college_data = []
-        for college_name, eligible_count in sorted(eligible_by_college.items()):
-            if not college_name:
-                continue
-            college_data.append({
-                "college": college_name,
-                "eligible": eligible_count,
-            })
+        turnout = HybridElectionService.compute_turnout_breakdown(election)
+        total_eligible = turnout["total_eligible"]
+        total_voted = turnout["official_total_voted"]
 
         return {
             "election_id": str(election.pk),
             "election_name": election.name,
             "election_type": election.election_type,
+            "voting_mode": election.voting_mode,
             "status": election.status,
+            "generated_at": timezone.now().isoformat(),
             "total_eligible": total_eligible,
             "total_voted": total_voted,
+            "online_voted": turnout["online_voted"],
+            "onsite_voted": turnout["onsite_voted"],
+            "combined_voted": turnout["combined_voted"],
+            "has_official_onsite_turnout": turnout["has_official_onsite_turnout"],
             "turnout_percentage": round(
                 (total_voted / total_eligible * 100) if total_eligible > 0 else 0, 2
             ),
-            "by_college": college_data,
+            "online_turnout_percentage": round(
+                (turnout["online_voted"] / total_eligible * 100) if total_eligible > 0 else 0,
+                2,
+            ),
+            "onsite_turnout_percentage": round(
+                (turnout["onsite_voted"] / total_eligible * 100) if total_eligible > 0 else 0,
+                2,
+            ),
+            "combined_turnout_percentage": round(
+                (turnout["combined_voted"] / total_eligible * 100) if total_eligible > 0 else 0,
+                2,
+            ),
+            "by_college": turnout["by_college"],
         }
 
 

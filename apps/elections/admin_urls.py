@@ -18,6 +18,7 @@ urlpatterns = [
 
     # Election management
     path("<uuid:election_id>/delete/", admin_views.delete_election, name="delete"),
+    path("<uuid:election_id>/update/", admin_views.update_election_settings, name="update"),
     path("<uuid:election_id>/banner/", admin_views.upload_election_banner, name="upload-banner"),
 
     # Position management (EB Head only)
@@ -49,6 +50,12 @@ urlpatterns = [
     path("<uuid:election_id>/voter-roll/summary/", admin_views.voter_roll_summary, name="voter-roll-summary"),
     path("<uuid:election_id>/voter-roll/generate/", admin_views.generate_voter_roll, name="voter-roll-generate"),
     path("<uuid:election_id>/voter-roll/finalize/", admin_views.finalize_voter_roll, name="voter-roll-finalize"),
+
+    # Hybrid canvass
+    path("<uuid:election_id>/hybrid/summary/", admin_views.hybrid_summary, name="hybrid-summary"),
+    path("<uuid:election_id>/hybrid/roster/import/", admin_views.import_hybrid_roster, name="hybrid-roster-import"),
+    path("<uuid:election_id>/hybrid/tally/template/", admin_views.download_hybrid_tally_template, name="hybrid-tally-template"),
+    path("<uuid:election_id>/hybrid/tally/import/", admin_views.import_hybrid_tally, name="hybrid-tally-import"),
 
     # Registrar batch management
     path("registrar-batches/", admin_views.list_registrar_batches, name="registrar-batches"),

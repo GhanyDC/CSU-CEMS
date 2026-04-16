@@ -8,6 +8,7 @@ urlpatterns: list = [
     # Student-facing election endpoints
     path("mine/", views.my_elections, name="mine"),
     path("<uuid:election_id>/ballot/", views.election_ballot, name="ballot"),
+    path("<uuid:election_id>/turnout/", views.election_turnout_student, name="turnout"),
     path("current/", views.current_election, name="current"),
     path("status/", views.voting_status, name="status"),
     path("results/", views.election_results, name="results"),

@@ -90,6 +90,17 @@ def _has_voted(student, election):
     ).exists()
 
 
+def _get_turnout_summary(election):
+    """Return the student-safe turnout summary for an election."""
+    turnout = TurnoutService.compute_turnout(election)
+    return {
+        "total_eligible": turnout["total_eligible"],
+        "total_voted": turnout["total_voted"],
+        "turnout_percentage": turnout["turnout_percentage"],
+        "generated_at": turnout.get("generated_at"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Student-facing endpoints
 # ---------------------------------------------------------------------------
@@ -119,6 +130,7 @@ def my_elections(request):
             "start_time": e.start_time.isoformat(),
             "end_time": e.end_time.isoformat(),
             "has_voted": voted,
+            "turnout": _get_turnout_summary(e),
         })
 
     return JsonResponse({
@@ -187,12 +199,15 @@ def election_ballot(request, election_id):
             if not candidates_qs.exists():
                 continue
 
+        candidates = list(candidates_qs)
+
         positions_data.append({
             "id": str(pos.pk),
             "title": pos.title,
             "category": pos.category,
             "category_display": pos.get_category_display(),
             "max_selections": pos.max_selections,
+            "single_candidate_threshold_applies": len(candidates) == 1,
             "candidates": [
                 {
                     "id": str(c.pk),
@@ -202,7 +217,7 @@ def election_ballot(request, election_id):
                     "photo_url": c.photo.url if c.photo else None,
                     "platform_text": c.platform_text,
                 }
-                for c in candidates_qs
+                for c in candidates
             ],
         })
 
@@ -217,6 +232,7 @@ def election_ballot(request, election_id):
             "end_time": election.end_time.isoformat(),
         },
         "has_voted": voted,
+        "turnout": _get_turnout_summary(election),
         "positions": positions_data,
     })
 
@@ -262,11 +278,14 @@ def current_election(request):
             if not candidates_qs.exists():
                 continue
 
+        candidates = list(candidates_qs)
+
         positions_data.append({
             "id": str(pos.pk),
             "title": pos.title,
             "category": pos.category,
             "max_selections": pos.max_selections,
+            "single_candidate_threshold_applies": len(candidates) == 1,
             "candidates": [
                 {
                     "id": str(c.pk),
@@ -276,7 +295,7 @@ def current_election(request):
                     "photo_url": c.photo.url if c.photo else None,
                     "platform_text": c.platform_text,
                 }
-                for c in candidates_qs
+                for c in candidates
             ],
         })
 
@@ -288,6 +307,7 @@ def current_election(request):
             "election_type": election.election_type,
             "start_time": election.start_time.isoformat(),
             "end_time": election.end_time.isoformat(),
+            "turnout": _get_turnout_summary(election),
             "positions": positions_data,
         },
     })
@@ -322,6 +342,7 @@ def voting_status(request):
             "election_name": e.name,
             "election_type": e.election_type,
             "has_voted": voted,
+            "turnout": _get_turnout_summary(e),
         })
 
     # Backward compatibility: return first election info at top level
@@ -334,7 +355,52 @@ def voting_status(request):
         "election_id": str(first.pk),
         "election_name": first.name,
         "has_voted": first_voted,
+        "turnout": _get_turnout_summary(first),
         "elections": elections_status,
+    })
+
+
+@require_GET
+@login_required_student
+def election_turnout_student(request, election_id):
+    """
+    GET /api/elections/<election_id>/turnout/
+
+    Returns turnout only for an eligible student, without any candidate tallies.
+    """
+    student = request.student
+
+    try:
+        election = Election.objects.get(pk=election_id)
+    except (Election.DoesNotExist, ValueError):
+        return JsonResponse(
+            {"success": False, "error": "Election not found."}, status=404
+        )
+
+    if election.status not in (
+        Election.Status.ACTIVE,
+        Election.Status.CLOSED,
+        Election.Status.PUBLISHED,
+    ):
+        return JsonResponse(
+            {"success": False, "error": "Turnout is not available for this election yet."},
+            status=403,
+        )
+
+    eligible, error = _check_student_eligible(student, election)
+    if not eligible:
+        return JsonResponse(
+            {"success": False, "error": error}, status=403
+        )
+
+    return JsonResponse({
+        "success": True,
+        "election": {
+            "id": str(election.pk),
+            "name": election.name,
+            "status": election.status,
+        },
+        "turnout": _get_turnout_summary(election),
     })
 
 
@@ -396,6 +462,22 @@ def election_results(request, election_id=None):
         )
 
     results = ResultService.compute_results_with_thresholds(election)
+    # Student-facing results stay combined-only even for hybrid elections.
+    for pos_data in results.get("positions", []):
+        pos_data.pop("online_total_votes", None)
+        pos_data.pop("onsite_total_votes", None)
+        pos_data.pop("combined_total_votes", None)
+        pos_data.pop("counting_mode", None)
+        pos_data.pop("participation_note", None)
+        for row in pos_data.get("results", []):
+            row.pop("online_votes", None)
+            row.pop("onsite_votes", None)
+            row.pop("combined_votes", None)
+    results.pop("online_ballots", None)
+    results.pop("onsite_ballots", None)
+    results.pop("combined_ballots", None)
+    results.pop("counting_mode", None)
+    results.pop("hybrid", None)
     return JsonResponse({"success": True, **results})
 
 
@@ -474,8 +556,14 @@ def election_tally_review(request, election_id):
         for pos_data in results.get("positions", []):
             for r in pos_data.get("results", []):
                 r.pop("votes", None)
+                r.pop("online_votes", None)
+                r.pop("onsite_votes", None)
+                r.pop("combined_votes", None)
             pos_data.pop("winner", None)
             pos_data.pop("status", None)
+            pos_data.pop("online_total_votes", None)
+            pos_data.pop("onsite_total_votes", None)
+            pos_data.pop("combined_total_votes", None)
         results["redacted"] = True
         results["redacted_reason"] = reason
         return results

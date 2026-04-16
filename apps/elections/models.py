@@ -11,7 +11,6 @@ College elections mirror the campus pattern within a single college.
 """
 import uuid
 
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.db import models
@@ -113,6 +112,10 @@ class Election(models.Model):
         CAMPUS = "campus", "Campus"
         COLLEGE = "college", "College"
 
+    class VotingMode(models.TextChoices):
+        ONLINE = "online", "Online"
+        HYBRID = "hybrid", "Hybrid"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     election_type = models.CharField(
@@ -142,6 +145,13 @@ class Election(models.Model):
         choices=Status.choices,
         default=Status.DRAFT,
         db_index=True,
+    )
+    voting_mode = models.CharField(
+        max_length=10,
+        choices=VotingMode.choices,
+        default=VotingMode.ONLINE,
+        db_index=True,
+        help_text="Hybrid elections accept online ballots plus closed-period onsite canvass imports.",
     )
     banner = models.ImageField(
         upload_to="election_banners/",
@@ -180,6 +190,10 @@ class Election(models.Model):
     @property
     def is_college(self) -> bool:
         return self.election_type == self.ElectionType.COLLEGE
+
+    @property
+    def is_hybrid(self) -> bool:
+        return self.voting_mode == self.VotingMode.HYBRID
 
     @property
     def is_voter_roll_finalized(self) -> bool:
@@ -412,3 +426,126 @@ class VerificationRecord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.student_id_input} – {self.election.name} ({self.get_status_display()})"
+
+
+class HybridImportBatch(models.Model):
+    """Audit-friendly batch record for onsite hybrid roster and tally imports."""
+
+    class BatchType(models.TextChoices):
+        ROSTER = "roster", "Onsite Roster"
+        TALLY = "tally", "Onsite Tally"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        SUPERSEDED = "superseded", "Superseded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    election = models.ForeignKey(
+        Election,
+        on_delete=models.CASCADE,
+        related_name="hybrid_import_batches",
+    )
+    batch_type = models.CharField(
+        max_length=10,
+        choices=BatchType.choices,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.FAILED,
+        db_index=True,
+    )
+    source_filename = models.CharField(max_length=255, blank=True, default="")
+    imported_by = models.CharField(max_length=255, blank=True, default="")
+    total_rows = models.PositiveIntegerField(default=0)
+    valid_rows = models.PositiveIntegerField(default=0)
+    invalid_rows = models.PositiveIntegerField(default=0)
+    overlap_count = models.PositiveIntegerField(default=0)
+    validation_summary = models.JSONField(default=dict, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Hybrid Import Batch"
+        verbose_name_plural = "Hybrid Import Batches"
+
+    def __str__(self) -> str:
+        return (
+            f"{self.election.name} – {self.get_batch_type_display()} "
+            f"({self.get_status_display()})"
+        )
+
+
+class OnsiteParticipation(models.Model):
+    """One validated onsite voter participation row linked to a roster batch."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(
+        HybridImportBatch,
+        on_delete=models.CASCADE,
+        related_name="participations",
+    )
+    student = models.ForeignKey(
+        "accounts.Student",
+        on_delete=models.PROTECT,
+        related_name="onsite_participations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Onsite Participation"
+        verbose_name_plural = "Onsite Participations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "student"],
+                name="unique_onsite_participation_per_batch_student",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student} – {self.batch.election.name}"
+
+
+class OnsiteTally(models.Model):
+    """Validated onsite tally row for a candidate within a hybrid tally batch."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(
+        HybridImportBatch,
+        on_delete=models.CASCADE,
+        related_name="tallies",
+    )
+    position = models.ForeignKey(
+        Position,
+        on_delete=models.PROTECT,
+        related_name="onsite_tallies",
+    )
+    candidate = models.ForeignKey(
+        Candidate,
+        on_delete=models.PROTECT,
+        related_name="onsite_tallies",
+    )
+    onsite_votes = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position__order", "candidate__full_name"]
+        verbose_name = "Onsite Tally"
+        verbose_name_plural = "Onsite Tallies"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "position", "candidate"],
+                name="unique_onsite_tally_per_batch_position_candidate",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.batch.election.name} – {self.position.title} – "
+            f"{self.candidate.full_name}"
+        )

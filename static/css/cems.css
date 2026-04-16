@@ -1014,6 +1014,27 @@ footer {
 }
 .dash-election-card .card-title { font-weight: 600; font-size: 0.95rem; }
 .dash-election-card .card-type { font-size: 0.75rem; color: var(--cems-text-secondary); }
+.dash-turnout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+}
+.dash-turnout-label {
+    color: var(--cems-text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.dash-turnout-value {
+    color: var(--cems-primary);
+    font-weight: 700;
+}
+.dash-turnout-meta {
+    color: var(--cems-text-secondary);
+}
 
 /* ---------- Info List ---------- */
 .info-list-item {
@@ -1082,6 +1103,61 @@ footer {
 }
 .abstain-card.selected .candidate-check { display: block; }
 
+/* ---------- Student Turnout Panel ---------- */
+.turnout-panel {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #fff, #f8fafc);
+}
+.turnout-panel-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cems-info-bg);
+    color: var(--cems-info);
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+.turnout-panel-body {
+    min-width: 0;
+}
+.turnout-panel-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cems-text-secondary);
+}
+.turnout-panel-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--cems-primary);
+    line-height: 1.1;
+}
+.turnout-panel-meta {
+    font-size: 0.85rem;
+    color: var(--cems-text);
+}
+.turnout-panel-time {
+    font-size: 0.75rem;
+    color: var(--cems-text-secondary);
+    margin-top: 0.15rem;
+}
+
+/* ---------- Ballot Notes ---------- */
+.position-rule-note {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--cems-info);
+}
+
 /* ---------- Review Section (Ballot) ---------- */
 .review-item {
     display: flex;
@@ -1127,6 +1203,8 @@ footer {
     .welcome-banner { padding: 1.25rem 1rem; }
     .welcome-banner h3 { font-size: 1.15rem; }
     .dash-election-card { padding: 0.75rem 1rem; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .turnout-panel { padding: 0.85rem 1rem; align-items: flex-start; }
+    .turnout-panel-value { font-size: 1.25rem; }
     .cems-navbar { padding: 0.5rem 0.75rem; }
     #submit-ballot-btn { width: 100%; }
     .btn-lg { padding: 0.65rem 1.25rem; font-size: 0.95rem; }

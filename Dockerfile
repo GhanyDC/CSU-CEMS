@@ -40,6 +40,7 @@ COPY . /app/
 
 # Create required directories
 RUN mkdir -p /app/staticfiles /app/logs /app/static \
+    && chmod +x /app/docker/entrypoint.sh \
     && chown -R cems:cems /app
 
 # Collect static files
@@ -48,14 +49,11 @@ RUN DJANGO_SECRET_KEY=build-placeholder \
     DJANGO_SETTINGS_MODULE=config.settings.production \
     python manage.py collectstatic --noinput 2>/dev/null || true
 
-# Switch to non-root user
-USER cems
-
 EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')" || exit 1
 
-# Default: run with gunicorn (workers = 2 * CPU + 1, capped for small VPS)
-CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3} --timeout 120 --access-logfile - --error-logfile -"]
+# Default: prepare writable runtime volumes, then run gunicorn as the cems user
+ENTRYPOINT ["sh", "/app/docker/entrypoint.sh"]

@@ -14,13 +14,14 @@ from PIL import Image
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.decorators import admin_login_required, role_required
 from apps.accounts.models import AdminRole
 from apps.elections.models import Candidate, College, Election, Position, RegistrarImportBatch
+from apps.elections.hybrid_services import HybridElectionError, HybridElectionService
 from apps.elections.services import (
     RegistrarBatchService,
     TurnoutService,
@@ -107,18 +108,25 @@ def _get_election_or_404(election_id):
         )
 
 
-def _serialize_election_summary(election):
-    """Return a compact election dict for list views."""
+def _get_banner_url(election):
     banner_url = None
     if election.banner:
         try:
             banner_url = election.banner.url
         except Exception:
             banner_url = None
+    return banner_url
+
+
+def _serialize_election_summary(election):
+    """Return a compact election dict for list views."""
+    banner_url = _get_banner_url(election)
     return {
         "id": str(election.pk),
         "name": election.name,
         "election_type": election.election_type,
+        "voting_mode": election.voting_mode,
+        "voting_mode_display": election.get_voting_mode_display(),
         "college": election.college,
         "status": election.status,
         "start_time": election.start_time.isoformat(),
@@ -171,11 +179,18 @@ def _serialize_election_detail(election):
 
     # Turnout data (votes cast vs eligible voters)
     turnout = TurnoutService.compute_turnout(election)
+    hybrid_summary = (
+        HybridElectionService.build_hybrid_summary(election)
+        if election.is_hybrid
+        else None
+    )
 
     return {
         "id": str(election.pk),
         "name": election.name,
         "election_type": election.election_type,
+        "voting_mode": election.voting_mode,
+        "voting_mode_display": election.get_voting_mode_display(),
         "college": election.college,
         "status": election.status,
         "start_time": election.start_time.isoformat(),
@@ -198,7 +213,16 @@ def _serialize_election_detail(election):
             "total_eligible": turnout["total_eligible"],
             "total_voted": turnout["total_voted"],
             "turnout_percentage": turnout["turnout_percentage"],
+            "online_voted": turnout["online_voted"],
+            "onsite_voted": turnout["onsite_voted"],
+            "combined_voted": turnout["combined_voted"],
+            "online_turnout_percentage": turnout["online_turnout_percentage"],
+            "onsite_turnout_percentage": turnout["onsite_turnout_percentage"],
+            "combined_turnout_percentage": turnout["combined_turnout_percentage"],
+            "has_official_onsite_turnout": turnout["has_official_onsite_turnout"],
         },
+        "banner_url": _get_banner_url(election),
+        "hybrid": hybrid_summary,
     }
 
 
@@ -293,11 +317,13 @@ def create_campus_election(request):
         name = data.get("name", "")
         start_time_str = data.get("start_time", "")
         end_time_str = data.get("end_time", "")
+        voting_mode = data.get("voting_mode", Election.VotingMode.ONLINE)
         banner = None
     else:
         name = request.POST.get("name", "")
         start_time_str = request.POST.get("start_time", "")
         end_time_str = request.POST.get("end_time", "")
+        voting_mode = request.POST.get("voting_mode", Election.VotingMode.ONLINE)
         banner = request.FILES.get("banner") or None
 
     if not name or not start_time_str or not end_time_str:
@@ -319,7 +345,12 @@ def create_campus_election(request):
         )
 
     try:
-        election = ElectionSetupService.create_campus_election(name, start_time, end_time)
+        election = ElectionSetupService.create_campus_election(
+            name,
+            start_time,
+            end_time,
+            voting_mode=voting_mode,
+        )
     except ElectionSetupError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
 
@@ -356,12 +387,14 @@ def create_college_elections(request):
         start_time_str = data.get("start_time", "")
         end_time_str = data.get("end_time", "")
         colleges = data.get("colleges", None)
+        voting_mode = data.get("voting_mode", Election.VotingMode.ONLINE)
         banner = None
     else:
         name_prefix = request.POST.get("name_prefix", "")
         start_time_str = request.POST.get("start_time", "")
         end_time_str = request.POST.get("end_time", "")
         colleges = None
+        voting_mode = request.POST.get("voting_mode", Election.VotingMode.ONLINE)
         banner = request.FILES.get("banner") or None
 
     if not name_prefix or not start_time_str or not end_time_str:
@@ -384,7 +417,11 @@ def create_college_elections(request):
 
     try:
         elections = ElectionSetupService.create_college_elections(
-            name_prefix, start_time, end_time, colleges,
+            name_prefix,
+            start_time,
+            end_time,
+            colleges,
+            voting_mode=voting_mode,
         )
     except ElectionSetupError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
@@ -473,6 +510,42 @@ def upload_election_banner(request, election_id):
         "message": "Banner uploaded.",
         "banner_url": election.banner.url,
         "election": _serialize_election_summary(election),
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def update_election_settings(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/update/
+    Body: {"voting_mode": "online"|"hybrid"}
+
+    Updates draft-only election settings.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    try:
+        if "voting_mode" in data:
+            ElectionSetupService.update_draft_election_voting_mode(
+                election,
+                data.get("voting_mode"),
+            )
+    except ElectionSetupError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    election.refresh_from_db()
+    return JsonResponse({
+        "success": True,
+        "message": "Election settings updated.",
+        "election": _serialize_election_detail(election),
     })
 
 
@@ -900,6 +973,162 @@ def finalize_voter_roll(request, election_id):
         "finalized_by": election.voter_roll_finalized_by,
         "finalized_at": election.voter_roll_finalized_at.isoformat(),
     })
+
+
+# ---------------------------------------------------------------------------
+# Hybrid canvass management
+# ---------------------------------------------------------------------------
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
+def hybrid_summary(request, election_id):
+    """GET /api/admin/elections/setup/<election_id>/hybrid/summary/"""
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    return JsonResponse({
+        "success": True,
+        "hybrid": HybridElectionService.build_hybrid_summary(election),
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def import_hybrid_roster(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/hybrid/roster/import/
+    Content-Type: multipart/form-data with 'csv_file' field.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    csv_file = request.FILES.get("csv_file")
+    if not csv_file:
+        return JsonResponse({"success": False, "error": "csv_file is required."}, status=400)
+
+    rows, err_resp = _parse_csv_safely(csv_file, max_size_mb=5)
+    if err_resp:
+        return err_resp
+
+    try:
+        result = HybridElectionService.import_onsite_roster(
+            election,
+            rows,
+            source_filename=csv_file.name,
+            imported_by=request.admin_profile.display_name,
+        )
+    except HybridElectionError as e:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": str(e),
+                "summary": e.summary,
+                "hybrid": HybridElectionService.build_hybrid_summary(election),
+            },
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            **result,
+            "hybrid": HybridElectionService.build_hybrid_summary(election),
+        }
+    )
+
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
+def download_hybrid_tally_template(request, election_id):
+    """GET /api/admin/elections/setup/<election_id>/hybrid/tally/template/"""
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if not election.is_hybrid:
+        return JsonResponse(
+            {"success": False, "error": "Tally templates are only available for hybrid elections."},
+            status=400,
+        )
+    if election.status == Election.Status.DRAFT:
+        return JsonResponse(
+            {"success": False, "error": "Tally templates become available after draft setup."},
+            status=400,
+        )
+
+    now = timezone.now()
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="hybrid_tally_template_{election.pk}_{now.strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
+    writer = csv.DictWriter(
+        response,
+        fieldnames=[
+            "position_id",
+            "position_title",
+            "candidate_id",
+            "candidate_name",
+            "onsite_votes",
+        ],
+    )
+    writer.writeheader()
+    for row in HybridElectionService.build_tally_template_rows(election):
+        writer.writerow(row)
+    return response
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def import_hybrid_tally(request, election_id):
+    """
+    POST /api/admin/elections/setup/<election_id>/hybrid/tally/import/
+    Content-Type: multipart/form-data with 'csv_file' field.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    csv_file = request.FILES.get("csv_file")
+    if not csv_file:
+        return JsonResponse({"success": False, "error": "csv_file is required."}, status=400)
+
+    rows, err_resp = _parse_csv_safely(csv_file, max_size_mb=10)
+    if err_resp:
+        return err_resp
+
+    try:
+        result = HybridElectionService.import_onsite_tally(
+            election,
+            rows,
+            source_filename=csv_file.name,
+            imported_by=request.admin_profile.display_name,
+        )
+    except HybridElectionError as e:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": str(e),
+                "summary": e.summary,
+                "hybrid": HybridElectionService.build_hybrid_summary(election),
+            },
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            **result,
+            "hybrid": HybridElectionService.build_hybrid_summary(election),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

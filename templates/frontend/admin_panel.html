@@ -80,12 +80,14 @@
             <button class="cems-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
             <button class="cems-tab" data-tab="positions" onclick="switchTab('positions')">Positions &amp; Candidates</button>
             <button class="cems-tab" data-tab="voterroll" onclick="switchTab('voterroll')">Voter Roll</button>
+            <button class="cems-tab d-none" id="hybrid-tab-button" data-tab="hybrid" onclick="switchTab('hybrid')">Hybrid Canvass</button>
             <button class="cems-tab" data-tab="lifecycle" onclick="switchTab('lifecycle')">Lifecycle</button>
         </div>
         <!-- Tab panels -->
         <div id="tab-overview" class="tab-panel"></div>
         <div id="tab-positions" class="tab-panel d-none"></div>
         <div id="tab-voterroll" class="tab-panel d-none"></div>
+        <div id="tab-hybrid" class="tab-panel d-none"></div>
         <div id="tab-lifecycle" class="tab-panel d-none"></div>
     </div>
 
@@ -152,6 +154,14 @@
                         <input type="datetime-local" class="form-control" id="campus-end">
                     </div>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Voting Mode</label>
+                    <select class="form-select" id="campus-voting-mode">
+                        <option value="online">Online Only</option>
+                        <option value="hybrid">Hybrid (online + onsite canvass)</option>
+                    </select>
+                    <div class="form-text">Hybrid elections keep the normal lifecycle but require onsite turnout and tally CSV imports after closing.</div>
+                </div>
                 <div>
                     <label class="form-label fw-semibold small">Election Banner <span class="text-muted fw-normal">(optional)</span></label>
                     <div class="upload-zone" id="campus-upload-zone">
@@ -200,6 +210,14 @@
                         <label class="form-label fw-semibold small">End Date &amp; Time</label>
                         <input type="datetime-local" class="form-control" id="college-end">
                     </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Voting Mode</label>
+                    <select class="form-select" id="college-voting-mode">
+                        <option value="online">Online Only</option>
+                        <option value="hybrid">Hybrid (online + onsite canvass)</option>
+                    </select>
+                    <div class="form-text">Applies to every generated college election in this batch.</div>
                 </div>
                 <div>
                     <label class="form-label fw-semibold small">Shared Banner <span class="text-muted fw-normal">(optional)</span></label>
@@ -280,6 +298,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center">
+                <div id="photo-current-state" class="mb-3 text-start small text-muted"></div>
                 <img id="photo-preview" src="" alt="" class="photo-upload-preview d-none">
                 <div class="upload-zone">
                     <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp">
@@ -287,6 +306,7 @@
                     <div class="upload-zone-text">Click to choose photo</div>
                     <div class="upload-zone-hint">JPEG, PNG or WebP · max 2 MB</div>
                 </div>
+                <div id="photo-file-meta" class="mt-3 text-start small text-muted"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-cems-outline btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -372,6 +392,7 @@
                     <div class="upload-zone-text">Click to choose CSV file</div>
                     <div class="upload-zone-hint">Max 50,000 rows</div>
                 </div>
+                <div id="batch-import-meta" class="mt-3 small text-muted"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
@@ -473,6 +494,7 @@
                     <div class="upload-zone-text" id="vr-upload-text">Click to choose CSV file</div>
                     <div class="upload-zone-hint">Max 50,000 rows · UTF-8 encoded</div>
                 </div>
+                <div id="vr-import-meta" class="mt-3 small text-muted"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
@@ -541,7 +563,24 @@ function fmtDate(iso) { return iso ? new Date(iso).toLocaleDateString(undefined,
 function fmtDateTime(iso) { return iso ? new Date(iso).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : '—'; }
 function statusBadge(s) { return `<span class="badge-status badge-${s}">${cap(s)}</span>`; }
 function typeBadge(t) { return `<span class="badge-type badge-${t}">${cap(t)}</span>`; }
+function modeBadge(m) { return `<span class="badge-type" style="background:${m === 'hybrid' ? 'var(--cems-warning-bg)' : '#EEF2FF'};color:${m === 'hybrid' ? 'var(--cems-warning)' : '#3730A3'}">${m === 'hybrid' ? 'Hybrid' : 'Online'}</span>`; }
 function apiPost(url, body) { return CEMS.api(url, { method: 'POST', body: JSON.stringify(body) }); }
+function isHybridElection(el) { return !!el && el.voting_mode === 'hybrid'; }
+function describeFile(file) {
+    if (!file) return '';
+    const sizeKb = (file.size / 1024).toFixed(file.size > 1024 * 1024 ? 0 : 1);
+    const sizeLabel = file.size >= 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+        : `${sizeKb} KB`;
+    return `${esc(file.name)} · ${sizeLabel}`;
+}
+function setFileMeta(targetId, file, extraHtml = '') {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.innerHTML = file
+        ? `<div><strong>Selected:</strong> ${describeFile(file)}</div>${extraHtml}`
+        : '';
+}
 
 // ── Initialization ───────────────────────────────────────────────────────
 (function init() {
@@ -635,6 +674,7 @@ function renderElectionList() {
                 <div class="ec-meta">
                     <span><i class="bi bi-calendar3"></i> ${fmtDate(e.start_time)}</span>
                     <span>${vrIcon}</span>
+                    <span><i class="bi bi-diagram-3"></i> ${e.voting_mode === 'hybrid' ? 'Hybrid' : 'Online'}</span>
                 </div>
             </div>
             <div class="ec-footer">
@@ -664,10 +704,13 @@ function renderElectionDetail() {
     document.getElementById('view-batches').classList.add('d-none');
     document.getElementById('view-colleges').classList.add('d-none');
     document.getElementById('view-election-detail').classList.remove('d-none');
+    const hybridTabButton = document.getElementById('hybrid-tab-button');
+    hybridTabButton.classList.toggle('d-none', !isHybridElection(el));
+    if (!isHybridElection(el) && currentTab === 'hybrid') currentTab = 'overview';
 
     document.getElementById('detail-election-name').textContent = el.name;
     document.getElementById('detail-badges').innerHTML = `
-        ${statusBadge(el.status)} ${typeBadge(el.election_type)}
+        ${statusBadge(el.status)} ${typeBadge(el.election_type)} ${modeBadge(el.voting_mode)}
         ${el.college ? `<span style="color:var(--cems-text-secondary);font-size:0.85rem">${esc(el.college)}</span>` : ''}
         <span style="color:var(--cems-text-secondary);font-size:0.85rem"><i class="bi bi-calendar3"></i> ${fmtDate(el.start_time)} to ${fmtDate(el.end_time)}</span>`;
     renderPrimaryAction();
@@ -693,9 +736,10 @@ function renderPrimaryAction() {
         } else {
             const a = actionMap[el.status];
             if (a) {
+                const hybridBlocked = isHybridElection(el) && el.status === 'closed' && !(el.hybrid && el.hybrid.ready_to_publish);
                 html = `<div class="primary-action-wrap">
-                    <button class="btn ${a.cls}" onclick="lifecycleAction('${a.action}')"><i class="bi ${a.icon}"></i> ${a.label}</button>
-                    <div class="action-sub">${a.sub}</div>
+                    <button class="btn ${a.cls}" onclick="lifecycleAction('${a.action}')" ${hybridBlocked ? 'disabled' : ''}><i class="bi ${a.icon}"></i> ${a.label}</button>
+                    <div class="action-sub">${hybridBlocked ? 'Hybrid election is waiting for onsite turnout and tally imports before publication.' : a.sub}</div>
                 </div>`;
             }
         }
@@ -705,6 +749,7 @@ function renderPrimaryAction() {
 
 // ── Tab switching ────────────────────────────────────────────────────────
 function switchTab(tab) {
+    if (tab === 'hybrid' && !isHybridElection(currentElectionDetail)) tab = 'overview';
     currentTab = tab;
     document.querySelectorAll('#detailTabs .cems-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('d-none'));
@@ -712,6 +757,7 @@ function switchTab(tab) {
     if (tab === 'overview') renderOverview();
     else if (tab === 'positions') renderPositions();
     else if (tab === 'voterroll') renderVoterRoll();
+    else if (tab === 'hybrid') renderHybridCanvass();
     else if (tab === 'lifecycle') renderLifecycle();
 }
 
@@ -720,10 +766,20 @@ function renderOverview() {
     const el = currentElectionDetail;
     const vr = el.voter_roll_summary || {};
     const t  = el.turnout || {};
+    const isHybrid = isHybridElection(el);
+    const hybrid = el.hybrid || {};
+    const hybridTurnout = hybrid.turnout || {};
     const eligible = t.total_eligible ?? (vr.approved ?? 0);
     const voted    = t.total_voted ?? 0;
     const pct      = eligible > 0 ? (voted / eligible * 100) : 0;
     const pctStr   = pct.toFixed(1);
+    const onlineVoted = t.online_voted ?? voted;
+    const onsiteVoted = t.onsite_voted ?? 0;
+    const combinedVoted = t.combined_voted ?? voted;
+    const onlinePct = t.online_turnout_percentage ?? (eligible > 0 ? (onlineVoted / eligible * 100) : 0);
+    const onsitePct = t.onsite_turnout_percentage ?? (eligible > 0 ? (onsiteVoted / eligible * 100) : 0);
+    const combinedPct = t.combined_turnout_percentage ?? (eligible > 0 ? (combinedVoted / eligible * 100) : 0);
+    const hybridTurnoutReady = !!t.has_official_onsite_turnout;
     const totalCands = el.positions.reduce((s, p) => s + p.candidates.filter(c => c.is_active).length, 0);
     const posWithoutCands = el.positions.filter(p => p.candidates.filter(c => c.is_active).length === 0).length;
 
@@ -780,6 +836,7 @@ function renderOverview() {
     // ── Status-dependent cards 2–4 ───────────────────────────────────────
     if (el.status === 'draft') {
         cards += mc('Scheduled Period', fmtDate(el.start_time), `to ${fmtDate(el.end_time)}`);
+        cards += mc('Voting Mode', isHybrid ? 'Hybrid' : 'Online', isHybrid ? 'Onsite canvass required after close' : 'System ballots only');
         const candColor = posWithoutCands > 0 ? 'var(--cems-danger)' : (totalCands > 0 ? 'var(--cems-success)' : '');
         const candSub   = posWithoutCands > 0
             ? `${posWithoutCands} position(s) unfilled`
@@ -789,26 +846,34 @@ function renderOverview() {
         cards += mc('Eligible Voters', eligible > 0 ? eligible.toLocaleString() : '—', eligSub, eligible > 0 ? 'var(--cems-success)' : '');
 
     } else if (el.status === 'active') {
-        const barCls = pct >= 50 ? 'bar-success' : '';
-        cards += mc('Votes Cast', voted.toLocaleString(),
+        const barCls = onlinePct >= 50 ? 'bar-success' : '';
+        cards += mc(isHybrid ? 'Online Partial Turnout' : 'Votes Cast', onlineVoted.toLocaleString(),
             `of ${eligible.toLocaleString()} eligible`,
             'var(--cems-primary)',
-            progressBar(pct, barCls));
+            progressBar(onlinePct, barCls));
         const timeRemStr = fmtTimeLeft(msLeft);
         const timeColor  = msLeft < 3600000 ? 'var(--cems-danger)' : msLeft < 86400000 ? 'var(--cems-warning)' : '';
         cards += mc('Time Remaining', timeRemStr, `Closes ${fmtDate(el.end_time)}`, timeColor,
             progressBar(Math.max(0, (msLeft / totalMs) * 100)));
-        cards += mc('Turnout', `${pctStr}%`, `${voted.toLocaleString()} voted`,
-            pct >= 50 ? 'var(--cems-success)' : '', progressBar(pct, barCls));
+        cards += mc(isHybrid ? 'Current Online %' : 'Turnout', `${onlinePct.toFixed(1)}%`, `${onlineVoted.toLocaleString()} voted`,
+            onlinePct >= 50 ? 'var(--cems-success)' : '', progressBar(onlinePct, barCls));
+        if (isHybrid) {
+            cards += mc('Hybrid Canvass', 'Pending', 'Onsite roster and tally upload opens after closing');
+        }
 
     } else {
-        // closed / published
-        const barCls = pct >= 50 ? 'bar-success' : 'bar-warning';
-        cards += mc('Final Turnout', `${pctStr}%`, `${voted.toLocaleString()} of ${eligible.toLocaleString()} voted`,
-            pct >= 50 ? 'var(--cems-success)' : 'var(--cems-danger)',
-            progressBar(pct, barCls));
-        cards += mc('Votes Cast', voted.toLocaleString(), `out of ${eligible.toLocaleString()} eligible`);
-        cards += mc('Voting Period', fmtDuration(totalMs), `${fmtDate(el.start_time)} — ${fmtDate(el.end_time)}`);
+        if (isHybrid && hybridTurnoutReady) {
+            cards += mc('Online', `${onlinePct.toFixed(1)}%`, `${onlineVoted.toLocaleString()} online turnout`, 'var(--cems-primary)', progressBar(onlinePct, onlinePct >= 50 ? 'bar-success' : ''));
+            cards += mc('Onsite', `${onsitePct.toFixed(1)}%`, `${onsiteVoted.toLocaleString()} onsite turnout`, 'var(--cems-warning)', progressBar(onsitePct, onsitePct >= 50 ? 'bar-success' : ''));
+            cards += mc('Combined Official', `${combinedPct.toFixed(1)}%`, `${combinedVoted.toLocaleString()} total turnout`, combinedPct >= 50 ? 'var(--cems-success)' : 'var(--cems-danger)', progressBar(combinedPct, combinedPct >= 50 ? 'bar-success' : 'bar-warning'));
+        } else {
+            const barCls = pct >= 50 ? 'bar-success' : 'bar-warning';
+            cards += mc(isHybrid ? 'Online Partial / Unofficial' : 'Final Turnout', `${pctStr}%`, `${voted.toLocaleString()} of ${eligible.toLocaleString()} voted`,
+                pct >= 50 ? 'var(--cems-success)' : 'var(--cems-danger)',
+                progressBar(pct, barCls));
+            cards += mc('Votes Cast', voted.toLocaleString(), `out of ${eligible.toLocaleString()} eligible`);
+            cards += mc('Voting Period', fmtDuration(totalMs), `${fmtDate(el.start_time)} — ${fmtDate(el.end_time)}`);
+        }
     }
 
     let html = `<div class="row g-3 mb-4">${cards}</div>`;
@@ -816,6 +881,11 @@ function renderOverview() {
     // ── Voter roll summary section ───────────────────────────────────────
     if (el.status !== 'draft' && eligible > 0) {
         const matchPct = vr.total > 0 ? Math.round(vr.matched / vr.total * 100) : 0;
+        const participationLabel = isHybrid && hybridTurnoutReady ? 'Combined Official Turnout' : (isHybrid ? 'Online Partial Turnout' : 'Participation Rate');
+        const participationValue = isHybrid && hybridTurnoutReady ? `${combinedPct.toFixed(1)}%` : (isHybrid ? `${onlinePct.toFixed(1)}%` : `${pctStr}%`);
+        const participationSub = isHybrid && hybridTurnoutReady
+            ? `${combinedVoted.toLocaleString()} combined turnout`
+            : `${voted.toLocaleString()} voted`;
         html += `<div class="cems-card mb-4">
             <div class="cems-card-header d-flex align-items-center gap-2">
                 <i class="bi bi-people-fill" style="color:var(--cems-primary)"></i>
@@ -839,9 +909,9 @@ function renderOverview() {
                     <div class="metric-sub">Finalized voter roll</div>
                 </div>
                 <div class="col-6 col-md-3 p-3 border-bottom">
-                    <div class="metric-label">Participation Rate</div>
-                    <div class="fw-bold fs-5">${pctStr}%</div>
-                    <div class="metric-sub">${voted.toLocaleString()} voted</div>
+                    <div class="metric-label">${participationLabel}</div>
+                    <div class="fw-bold fs-5">${participationValue}</div>
+                    <div class="metric-sub">${participationSub}</div>
                 </div>
             </div>
         </div>`;
@@ -915,6 +985,34 @@ function renderOverview() {
                     </div>` : ''}
                 </div>
                 ${!canExportTally && (el.status === 'active') ? `<p class="text-muted mt-2 mb-0" style="font-size:0.8rem"><i class="bi bi-info-circle me-1"></i>Tally and participation exports become available after the election is closed.</p>` : ''}
+            </div>
+        </div>`;
+    }
+
+    if (el.status === 'draft') {
+        const modeOptions = [
+            { value: 'online', label: 'Online Only', desc: 'Students vote only through the system.' },
+            { value: 'hybrid', label: 'Hybrid', desc: 'Enable post-close onsite turnout and tally imports.' },
+        ];
+        html += `<div class="cems-card mb-4">
+            <div class="cems-card-header d-flex align-items-center gap-2">
+                <i class="bi bi-sliders2" style="color:var(--cems-primary)"></i>
+                <span class="fw-semibold">Draft Configuration</span>
+            </div>
+            <div class="p-3">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-8">
+                        <label class="form-label fw-semibold small">Voting Mode</label>
+                        <select class="form-select" id="draft-voting-mode">
+                            ${modeOptions.map(opt => `<option value="${opt.value}" ${el.voting_mode === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
+                        </select>
+                        <div class="form-text">${modeOptions.find(opt => opt.value === el.voting_mode)?.desc || ''}</div>
+                    </div>
+                    <div class="col-md-4">
+                        ${!adminUser.is_read_only ? `<button class="btn btn-cems-outline w-100" onclick="saveDraftVotingMode()"><i class="bi bi-check2-circle me-1"></i>Save Mode</button>` : ''}
+                    </div>
+                </div>
+                ${el.banner_url ? `<div class="mt-4"><div class="small text-muted mb-2">Current banner</div><img src="${esc(el.banner_url)}" alt="" style="width:100%;max-width:460px;border-radius:1rem;border:1px solid var(--cems-border);object-fit:cover"></div>` : '<div class="small text-muted mt-3">No banner uploaded yet. You can upload one while this election stays in Draft.</div>'}
             </div>
         </div>`;
     }
@@ -1036,7 +1134,11 @@ async function renderPositions() {
 
     // State mode indicator for non-draft
     if (isLive) {
-        const stateLabel = isActive ? 'Active — Live Monitoring' : isClosed ? 'Closed — Review Mode' : 'Published — Final Results';
+        const stateLabel = isActive
+            ? (isHybridElection(el) ? 'Active — Live Online Monitoring' : 'Active — Live Monitoring')
+            : isClosed
+                ? (isHybridElection(el) ? 'Closed — Hybrid Canvass Review' : 'Closed — Review Mode')
+                : (isHybridElection(el) ? 'Published — Combined Official Results' : 'Published — Final Results');
         const stateIcon = isActive ? 'bi-broadcast' : isClosed ? 'bi-lock' : 'bi-check-circle';
         html += `<div class="mb-3 d-flex align-items-center gap-2" style="font-size:0.85rem;color:var(--cems-text-secondary)">
             <i class="bi ${stateIcon}"></i> ${stateLabel}
@@ -1083,12 +1185,18 @@ async function renderPositions() {
             const totalBallots = posTally.total_ballots || 0;
             const abstain = posTally.abstain_count || 0;
             const pctPart = totalBallots > 0 ? (participation / totalBallots * 100).toFixed(1) : '0.0';
-            html += `<div class="position-monitoring">
-                <div class="d-flex flex-wrap gap-3">
-                    <span><i class="bi bi-people-fill me-1"></i>Participation: <strong>${participation}</strong> / ${totalBallots} (${pctPart}%)</span>
-                    <span><i class="bi bi-dash-circle me-1"></i>Abstained: <strong>${abstain}</strong></span>
-                </div>
-            </div>`;
+            if (posTally.position_participation == null && posTally.participation_note) {
+                html += `<div class="position-monitoring">
+                    <div class="small text-muted"><i class="bi bi-info-circle me-1"></i>${esc(posTally.participation_note)}</div>
+                </div>`;
+            } else {
+                html += `<div class="position-monitoring">
+                    <div class="d-flex flex-wrap gap-3">
+                        <span><i class="bi bi-people-fill me-1"></i>Participation: <strong>${participation}</strong> / ${totalBallots} (${pctPart}%)</span>
+                        <span><i class="bi bi-dash-circle me-1"></i>Abstained: <strong>${abstain}</strong></span>
+                    </div>
+                </div>`;
+            }
         }
 
         // Candidates divider
@@ -1117,7 +1225,14 @@ async function renderPositions() {
                 if (candResult && candResult.votes !== undefined) {
                     const totalVotes = posTally.total_votes || 1;
                     const pct = totalVotes > 0 ? (candResult.votes / totalVotes * 100).toFixed(1) : '0.0';
-                    voteHtml = `<div class="cand-votes"><span class="vote-count">${candResult.votes}</span><span class="vote-pct">${pct}%</span></div>`;
+                    if (isHybridElection(el)) {
+                        voteHtml = `<div class="cand-votes" style="min-width:190px;text-align:right">
+                            <div><span class="vote-count">${candResult.votes}</span><span class="vote-pct">${pct}%</span></div>
+                            <div class="text-muted" style="font-size:0.72rem">Online ${candResult.online_votes || 0} · Onsite ${candResult.onsite_votes || 0} · Combined ${candResult.combined_votes || candResult.votes}</div>
+                        </div>`;
+                    } else {
+                        voteHtml = `<div class="cand-votes"><span class="vote-count">${candResult.votes}</span><span class="vote-pct">${pct}%</span></div>`;
+                    }
                 }
             }
 
@@ -1404,16 +1519,198 @@ async function renderVoterRoll() {
     }
 }
 
+function renderHybridBatchCard(label, stateBlock) {
+    const active = stateBlock?.active || {};
+    const latest = stateBlock?.latest || {};
+    const latestErrors = latest.validation_summary?.errors || [];
+    const activeMeta = active.status && active.status !== 'missing'
+        ? `<div class="small text-muted mt-2">Active import: ${fmtDateTime(active.activated_at || active.created_at)} by ${esc(active.imported_by || '—')}<br>${esc(active.source_filename || 'Manual import')}</div>`
+        : '<div class="small text-muted mt-2">No active import yet.</div>';
+    const latestMeta = latest.status && latest.status !== 'missing'
+        ? `<div class="small text-muted mt-3">Latest attempt: <strong>${cap(latest.status)}</strong> on ${fmtDateTime(latest.created_at)} by ${esc(latest.imported_by || '—')}</div>`
+        : '';
+    const errorHtml = latestErrors.length
+        ? `<div class="mt-3 small" style="color:var(--cems-danger)"><strong>Validation notes</strong><ul class="mb-0 mt-1 ps-3">${latestErrors.map(err => `<li>${esc(err)}</li>`).join('')}</ul></div>`
+        : '';
+    return `<div class="cems-card p-4 h-100">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <h5 class="mb-0">${label}</h5>
+            <span class="badge-status ${latest.status === 'active' ? 'badge-active' : latest.status === 'failed' ? 'badge-draft' : 'badge-closed'}">${cap(latest.status || 'missing')}</span>
+        </div>
+        <div class="small text-muted">Rows: <strong>${(latest.total_rows || 0).toLocaleString()}</strong> total &middot; <strong>${(latest.valid_rows || 0).toLocaleString()}</strong> valid &middot; <strong>${(latest.invalid_rows || 0).toLocaleString()}</strong> invalid</div>
+        ${latest.overlap_count ? `<div class="small mt-2" style="color:var(--cems-warning)">Overlaps blocked: <strong>${latest.overlap_count}</strong></div>` : ''}
+        ${activeMeta}
+        ${latestMeta}
+        ${errorHtml}
+    </div>`;
+}
+
+function hybridFileInput(kind) {
+    return kind === 'roster' ? document.getElementById('hybrid-roster-input') : document.getElementById('hybrid-tally-input');
+}
+
+function handleHybridFileMeta(kind) {
+    const file = hybridFileInput(kind)?.files?.[0];
+    setFileMeta(`hybrid-${kind}-meta`, file);
+}
+
+async function uploadHybridRoster() {
+    const file = hybridFileInput('roster')?.files?.[0];
+    if (!file) { CEMS.showToast('Select the onsite roster CSV first.', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('csv_file', file);
+    try {
+        const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/hybrid/roster/import/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: fd,
+        });
+        const res = await response.json();
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            await openElection(currentElectionDetail.id);
+            switchTab('hybrid');
+        } else {
+            CEMS.showToast(res.error || 'Roster import failed.', 'danger');
+            if (res.summary?.errors?.length) document.getElementById('hybrid-roster-meta').innerHTML = `<div style="color:var(--cems-danger)"><strong>Validation failed</strong><ul class="mb-0 mt-1 ps-3">${res.summary.errors.map(err => `<li>${esc(err)}</li>`).join('')}</ul></div>`;
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+function downloadHybridTallyTemplate() {
+    window.open(`/api/admin/elections/setup/${currentElectionDetail.id}/hybrid/tally/template/`, '_blank');
+}
+
+async function uploadHybridTally() {
+    const file = hybridFileInput('tally')?.files?.[0];
+    if (!file) { CEMS.showToast('Select the onsite tally CSV first.', 'warning'); return; }
+    const fd = new FormData();
+    fd.append('csv_file', file);
+    try {
+        const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/hybrid/tally/import/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            body: fd,
+        });
+        const res = await response.json();
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            await openElection(currentElectionDetail.id);
+            switchTab('hybrid');
+        } else {
+            CEMS.showToast(res.error || 'Tally import failed.', 'danger');
+            if (res.summary?.errors?.length) document.getElementById('hybrid-tally-meta').innerHTML = `<div style="color:var(--cems-danger)"><strong>Validation failed</strong><ul class="mb-0 mt-1 ps-3">${res.summary.errors.map(err => `<li>${esc(err)}</li>`).join('')}</ul></div>`;
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+async function renderHybridCanvass() {
+    const el = currentElectionDetail;
+    if (!isHybridElection(el)) {
+        document.getElementById('tab-hybrid').innerHTML = '<div class="empty-state"><i class="bi bi-diagram-3"></i><p>This election is not in hybrid mode.</p></div>';
+        return;
+    }
+
+    let hybrid = el.hybrid || null;
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/${el.id}/hybrid/summary/`);
+        if (res.success) hybrid = res.hybrid;
+    } catch (err) {
+        console.warn('Hybrid summary refresh failed', err);
+    }
+    const turnout = hybrid?.turnout || {};
+    const rosterState = hybrid?.roster_import || {};
+    const tallyState = hybrid?.tally_import || {};
+    const canImport = !adminUser.is_read_only && el.status === 'closed';
+
+    let html = `<div class="cems-card p-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div>
+                <h5 class="mb-1">Hybrid Canvass</h5>
+                <p class="text-muted mb-0" style="font-size:0.9rem">${el.status === 'active'
+                    ? 'Preparation mode only. Download the tally template now and upload onsite turnout/tallies after the election is closed.'
+                    : el.status === 'closed'
+                        ? 'Closed status is the canvassing window. Upload the onsite turnout roster first, then the onsite tally file, review combined values, and publish when ready.'
+                        : 'Published hybrid election. This tab is now read-only and shows the official online/onsite split.'}</p>
+            </div>
+            <button class="btn btn-cems-outline btn-sm" onclick="downloadHybridTallyTemplate()"><i class="bi bi-download me-1"></i>Download Tally Template</button>
+        </div>
+    </div>`;
+
+    html += `<div class="row g-3 mb-4">
+        <div class="col-12 col-md-4"><div class="metric-card"><div class="metric-label">Online Turnout</div><div class="metric-value" style="color:var(--cems-primary)">${(turnout.online_voted || 0).toLocaleString()}</div><div class="metric-sub">${turnout.online_percentage || 0}%</div></div></div>
+        <div class="col-12 col-md-4"><div class="metric-card"><div class="metric-label">Onsite Turnout</div><div class="metric-value" style="color:var(--cems-warning)">${(turnout.onsite_voted || 0).toLocaleString()}</div><div class="metric-sub">${turnout.onsite_percentage || 0}%</div></div></div>
+        <div class="col-12 col-md-4"><div class="metric-card"><div class="metric-label">Combined Official</div><div class="metric-value" style="color:var(--cems-success)">${(turnout.combined_voted || 0).toLocaleString()}</div><div class="metric-sub">${turnout.combined_percentage || 0}%</div></div></div>
+    </div>`;
+
+    html += `<div class="row g-3 mb-4">
+        <div class="col-lg-6">${renderHybridBatchCard('Step 1: Onsite Roster CSV', rosterState)}</div>
+        <div class="col-lg-6">${renderHybridBatchCard('Step 2: Onsite Tally CSV', tallyState)}</div>
+    </div>`;
+
+    if (el.status === 'closed') {
+        html += `<div class="row g-3 mb-4">
+            <div class="col-lg-6">
+                <div class="cems-card p-4 h-100">
+                    <h5 class="mb-2">Upload Onsite Turnout Roster</h5>
+                    <p class="text-muted small">Required column: <code>student_id</code>. Students who already voted online will be rejected to prevent overlap.</p>
+                    <div class="upload-zone">
+                        <input type="file" id="hybrid-roster-input" accept=".csv" onchange="handleHybridFileMeta('roster')" ${canImport ? '' : 'disabled'}>
+                        <i class="bi bi-people upload-zone-icon"></i>
+                        <div class="upload-zone-text">Choose onsite turnout CSV</div>
+                        <div class="upload-zone-hint">Roster import replaces the current active onsite turnout batch</div>
+                    </div>
+                    <div id="hybrid-roster-meta" class="mt-3 small text-muted"></div>
+                    ${canImport ? `<button class="btn btn-cems-primary mt-3" onclick="uploadHybridRoster()"><i class="bi bi-upload me-1"></i>Import Onsite Turnout</button>` : ''}
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="cems-card p-4 h-100">
+                    <h5 class="mb-2">Upload Onsite Tally</h5>
+                    <p class="text-muted small">Use the downloaded template so candidate IDs and position IDs stay aligned with the election.</p>
+                    <div class="upload-zone">
+                        <input type="file" id="hybrid-tally-input" accept=".csv" onchange="handleHybridFileMeta('tally')" ${canImport ? '' : 'disabled'}>
+                        <i class="bi bi-bar-chart upload-zone-icon"></i>
+                        <div class="upload-zone-text">Choose onsite tally CSV</div>
+                        <div class="upload-zone-hint">Every active candidate row must be present in the file</div>
+                    </div>
+                    <div id="hybrid-tally-meta" class="mt-3 small text-muted"></div>
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button class="btn btn-cems-outline" onclick="downloadHybridTallyTemplate()"><i class="bi bi-download me-1"></i>Template</button>
+                        ${canImport ? `<button class="btn btn-cems-primary" onclick="uploadHybridTally()"><i class="bi bi-upload me-1"></i>Import Tally</button>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    html += `<div class="cems-card p-4">
+        <div class="d-flex align-items-center justify-content-between gap-3">
+            <div>
+                <h5 class="mb-1">Publish Gate</h5>
+                <div class="text-muted small">Results can only be published after both active hybrid imports are present and valid.</div>
+            </div>
+            <span class="badge-status ${hybrid?.ready_to_publish ? 'badge-active' : 'badge-draft'}">${hybrid?.ready_to_publish ? 'Ready to Publish' : 'Waiting on Imports'}</span>
+        </div>
+        <div class="small mt-3 text-muted">Review source-split tallies in the <strong>Positions &amp; Candidates</strong> tab before publishing.</div>
+    </div>`;
+
+    document.getElementById('tab-hybrid').innerHTML = html;
+}
+
 // ── Lifecycle Tab ────────────────────────────────────────────────────────
 function renderLifecycle() {
     const el = currentElectionDetail;
     const states = ['draft','active','closed','published'];
     const idx = states.indexOf(el.status);
+    const hybridReady = !isHybridElection(el) || !!(el.hybrid && el.hybrid.ready_to_publish);
 
     const stepConfig = {
         draft:     { label: 'Start Election',   desc: 'Open voting to all eligible students. Once started, you cannot edit positions or candidates.', action: 'start', btnCls: 'btn-cems-primary', btnLabel: 'Start' },
         active:    { label: 'Close Election',    desc: 'End voting period and prepare results. Students can no longer vote after this action.', action: 'close', btnCls: 'btn-cems-danger', btnLabel: 'Close' },
-        closed:    { label: 'Publish Results',   desc: 'Make official results visible to all eligible students. This action is permanent.', action: 'publish', btnCls: 'btn-cems-success', btnLabel: 'Publish' },
+        closed:    { label: 'Publish Results',   desc: isHybridElection(el) ? 'Publish only after onsite roster and tally imports are both active and verified.' : 'Make official results visible to all eligible students. This action is permanent.', action: 'publish', btnCls: 'btn-cems-success', btnLabel: 'Publish' },
     };
 
     let html = `<div class="cems-card p-4">
@@ -1431,11 +1728,16 @@ function renderLifecycle() {
         html += `<div class="lifecycle-step ${cls}">
             <div><div class="lifecycle-step-title">${cfg.label}</div><div class="lifecycle-step-desc">${cfg.desc}</div></div>
             ${isCompleted ? '<span style="color:var(--cems-success)"><i class="bi bi-check-circle-fill"></i></span>' : ''}
-            ${isCurrent && adminUser.is_eb_head ? `<button class="btn ${cfg.btnCls} btn-sm" onclick="lifecycleAction('${cfg.action}')">${cfg.btnLabel}</button>` : ''}
+            ${isCurrent && adminUser.is_eb_head ? `<button class="btn ${cfg.btnCls} btn-sm" onclick="lifecycleAction('${cfg.action}')" ${(s === 'closed' && !hybridReady) ? 'disabled' : ''}>${cfg.btnLabel}</button>` : ''}
         </div>`;
     });
 
     html += '</div>';
+    if (isHybridElection(el) && el.status === 'closed' && !hybridReady) {
+        html += `<div class="cems-card p-4 mt-3">
+            <div class="small" style="color:var(--cems-warning)"><i class="bi bi-info-circle me-1"></i>The publish action is locked until the onsite turnout roster and onsite tally imports both pass validation in the <strong>Hybrid Canvass</strong> tab.</div>
+        </div>`;
+    }
 
     // Timeline section
     html += `<div class="cems-card p-4 mt-3">
@@ -1462,7 +1764,9 @@ function lifecycleAction(action) {
     const msgs = {
         start: 'Start this election? Voting will open and positions/candidates will be locked.',
         close: 'Close this election? No more ballots will be accepted.',
-        publish: 'Publish results? This makes results visible to students and is permanent.'
+        publish: isHybridElection(currentElectionDetail)
+            ? 'Publish results? For hybrid elections this should only be done after reviewing the online, onsite, and combined figures.'
+            : 'Publish results? This makes results visible to students and is permanent.'
     };
     showConfirm('Confirm ' + cap(action), msgs[action], async () => {
         try {
@@ -1473,11 +1777,27 @@ function lifecycleAction(action) {
     });
 }
 
+async function saveDraftVotingMode() {
+    const value = document.getElementById('draft-voting-mode')?.value;
+    if (!value) return;
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${currentElectionDetail.id}/update/`, { voting_mode: value });
+        if (res.success) {
+            CEMS.showToast('Voting mode updated.', 'success');
+            currentElectionDetail = res.election;
+            renderElectionDetail();
+        } else {
+            CEMS.showToast(res.error || 'Failed to update voting mode.', 'danger');
+        }
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
 // ── Create Campus ────────────────────────────────────────────────────────
 function showCreateCampusModal() {
     document.getElementById('campus-name').value = '';
     document.getElementById('campus-start').value = '';
     document.getElementById('campus-end').value = '';
+    document.getElementById('campus-voting-mode').value = 'online';
     document.getElementById('campus-banner').value = '';
     const campusPrev = document.getElementById('campus-banner-preview');
     if (campusPrev) { campusPrev.classList.add('d-none'); campusPrev.src = ''; }
@@ -1498,12 +1818,14 @@ async function submitCreateCampus() {
     const name = document.getElementById('campus-name').value.trim();
     const start = document.getElementById('campus-start').value;
     const end = document.getElementById('campus-end').value;
+    const votingMode = document.getElementById('campus-voting-mode').value;
     const bannerFile = document.getElementById('campus-banner').files[0];
     if (!name || !start || !end) { CEMS.showToast('All fields required.', 'warning'); return; }
     const fd = new FormData();
     fd.append('name', name);
     fd.append('start_time', new Date(start).toISOString());
     fd.append('end_time', new Date(end).toISOString());
+    fd.append('voting_mode', votingMode);
     if (bannerFile) fd.append('banner', bannerFile);
     try {
         const response = await fetch('/api/admin/elections/setup/create-campus/', {
@@ -1522,6 +1844,7 @@ function showCreateCollegeModal() {
     document.getElementById('college-prefix').value = '';
     document.getElementById('college-start').value = '';
     document.getElementById('college-end').value = '';
+    document.getElementById('college-voting-mode').value = 'online';
     document.getElementById('college-banner').value = '';
     const collegePrev = document.getElementById('college-banner-preview');
     if (collegePrev) { collegePrev.classList.add('d-none'); collegePrev.src = ''; }
@@ -1542,12 +1865,14 @@ async function submitCreateCollege() {
     const prefix = document.getElementById('college-prefix').value.trim();
     const start = document.getElementById('college-start').value;
     const end = document.getElementById('college-end').value;
+    const votingMode = document.getElementById('college-voting-mode').value;
     const bannerFile = document.getElementById('college-banner').files[0];
     if (!prefix || !start || !end) { CEMS.showToast('All fields required.', 'warning'); return; }
     const fd = new FormData();
     fd.append('name_prefix', prefix);
     fd.append('start_time', new Date(start).toISOString());
     fd.append('end_time', new Date(end).toISOString());
+    fd.append('voting_mode', votingMode);
     if (bannerFile) fd.append('banner', bannerFile);
     try {
         const response = await fetch('/api/admin/elections/setup/create-college/', {
@@ -1637,15 +1962,24 @@ async function toggleCandidate(candidateId, newActive) {
 let photoTargetId = null;
 function openPhotoUpload(candidateId) {
     photoTargetId = candidateId;
+    const candidate = currentElectionDetail?.positions?.flatMap(p => p.candidates || []).find(c => c.id === candidateId);
     document.getElementById('photo-input').value = '';
     document.getElementById('photo-preview').classList.add('d-none');
+    document.getElementById('photo-preview').src = '';
+    document.getElementById('photo-file-meta').innerHTML = '';
+    document.getElementById('photo-current-state').innerHTML = candidate?.photo_url
+        ? `<div><strong>Current photo</strong></div><div class="mt-2"><img src="${esc(candidate.photo_url)}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid var(--cems-border)"></div>`
+        : '<div>No current photo uploaded yet.</div>';
     new bootstrap.Modal(document.getElementById('uploadPhotoModal')).show();
 }
 document.getElementById('photo-input')?.addEventListener('change', function() {
     if (this.files[0]) {
+        setFileMeta('photo-file-meta', this.files[0]);
         const r = new FileReader();
         r.onload = e => { const p = document.getElementById('photo-preview'); p.src = e.target.result; p.classList.remove('d-none'); };
         r.readAsDataURL(this.files[0]);
+    } else {
+        document.getElementById('photo-file-meta').innerHTML = '';
     }
 });
 async function submitPhotoUpload() {
@@ -1679,11 +2013,13 @@ function confirmDeleteCandidate(id, name) {
 function showImportVoterRollModal() {
     document.getElementById('vr-csv-input').value = '';
     document.getElementById('vr-upload-text').textContent = 'Click to choose CSV file';
+    document.getElementById('vr-import-meta').innerHTML = '';
     new bootstrap.Modal(document.getElementById('importVoterRollModal')).show();
 }
 document.getElementById('vr-csv-input')?.addEventListener('change', function() {
     const f = this.files[0];
     document.getElementById('vr-upload-text').textContent = f ? f.name : 'Click to choose CSV file';
+    setFileMeta('vr-import-meta', f, f ? '<div class="mt-1">Expected key column: <code>student_id</code></div>' : '');
 });
 async function submitVoterRollCSV() {
     const file = document.getElementById('vr-csv-input').files[0];
@@ -1697,8 +2033,17 @@ async function submitVoterRollCSV() {
             body: fd
         });
         const res = await response.json();
-        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('importVoterRollModal')).hide(); await openElection(currentElectionDetail.id); switchTab('voterroll'); }
-        else CEMS.showToast(res.error, 'danger');
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('importVoterRollModal')).hide();
+            await openElection(currentElectionDetail.id);
+            switchTab('voterroll');
+        } else {
+            document.getElementById('vr-import-meta').innerHTML = res.summary?.errors?.length
+                ? `<div style="color:var(--cems-danger)"><strong>Import failed</strong><ul class="mb-0 mt-1 ps-3">${res.summary.errors.map(err => `<li>${esc(err)}</li>`).join('')}</ul></div>`
+                : '';
+            CEMS.showToast(res.error, 'danger');
+        }
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
@@ -1791,6 +2136,7 @@ let importBatchId = null;
 function openBatchImport(batchId, totalImported) {
     importBatchId = batchId;
     document.getElementById('batch-csv-input').value = '';
+    document.getElementById('batch-import-meta').innerHTML = '';
     // Adjust modal title and hint based on whether data already exists
     const isAppend = totalImported > 0;
     const titleEl = document.querySelector('#importBatchModal .modal-title');
@@ -1805,6 +2151,10 @@ function openBatchImport(batchId, totalImported) {
         : '<i class="bi bi-upload me-1"></i>Import';
     new bootstrap.Modal(document.getElementById('importBatchModal')).show();
 }
+document.getElementById('batch-csv-input')?.addEventListener('change', function() {
+    const f = this.files[0];
+    setFileMeta('batch-import-meta', f, f ? '<div class="mt-1">Required columns: <code>student_id, full_name, date_of_birth, college, course, year</code></div>' : '');
+});
 
 async function deleteBatch(batchId, batchName) {
     showConfirm(
@@ -1832,8 +2182,16 @@ async function submitBatchImport() {
             body: fd
         });
         const res = await response.json();
-        if (res.success) { CEMS.showToast(res.message, 'success'); bootstrap.Modal.getInstance(document.getElementById('importBatchModal')).hide(); await showBatchesView(); }
-        else CEMS.showToast(res.error, 'danger');
+        if (res.success) {
+            CEMS.showToast(res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('importBatchModal')).hide();
+            await showBatchesView();
+        } else {
+            document.getElementById('batch-import-meta').innerHTML = res.summary?.errors?.length
+                ? `<div style="color:var(--cems-danger)"><strong>Import failed</strong><ul class="mb-0 mt-1 ps-3">${res.summary.errors.map(err => `<li>${esc(err)}</li>`).join('')}</ul></div>`
+                : '';
+            CEMS.showToast(res.error, 'danger');
+        }
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 

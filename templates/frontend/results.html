@@ -153,13 +153,21 @@ function renderResults(positions, totalBallots) {
         const posTotal = results.reduce(function(s, r) { return s + (r.votes || 0); }, 0);
 
         const categoryBadge = getCategoryBadge(pos.category);
-        const winnerInfo = pos.winner
-            ? '<span class="badge-status badge-active"><i class="bi bi-trophy-fill"></i> ' + CEMS.escapeHtml(pos.winner) + '</span>'
-            : '';
+        let winnerInfo = '';
+        if (pos.winner) {
+            winnerInfo = '<span class="badge-status badge-active"><i class="bi bi-trophy-fill"></i> ' + CEMS.escapeHtml(pos.winner) + '</span>';
+        } else if (pos.status === 'threshold_not_met') {
+            winnerInfo = '<span class="badge-status badge-closed"><i class="bi bi-shield-x"></i> 50% + 1 not met</span>';
+        } else if (pos.status === 'no_majority') {
+            winnerInfo = '<span class="badge-status badge-closed"><i class="bi bi-dash-circle"></i> No majority</span>';
+        }
 
         let thresholdHtml = '';
         if (pos.threshold_50_plus_1 !== undefined) {
-            thresholdHtml = '<small class="text-muted d-block mt-1">50%+1 Threshold: <strong>' + pos.threshold_50_plus_1 + '</strong> votes (of ' + pos.threshold_denominator + ' eligible)</small>';
+            const thresholdLabel = pos.single_candidate_threshold_applies
+                ? 'Single-candidate threshold'
+                : '50%+1 threshold';
+            thresholdHtml = '<small class="text-muted d-block mt-1">' + thresholdLabel + ': <strong>' + pos.threshold_50_plus_1 + '</strong> votes (of ' + pos.threshold_denominator + ' eligible)</small>';
         }
 
         let abstainHtml = '';

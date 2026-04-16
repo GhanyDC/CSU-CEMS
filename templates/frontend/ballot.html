@@ -62,6 +62,18 @@
                 <a href="/dashboard/" style="color:var(--cems-info);font-weight:600">Dashboard &rarr;</a>
             </div>
 
+            <div class="cems-card turnout-panel d-none" id="ballot-turnout-panel">
+                <div class="turnout-panel-icon">
+                    <i class="bi bi-people-fill"></i>
+                </div>
+                <div class="turnout-panel-body">
+                    <div class="turnout-panel-label">Current turnout</div>
+                    <div class="turnout-panel-value"><span id="ballot-turnout-percent">0%</span></div>
+                    <div class="turnout-panel-meta" id="ballot-turnout-meta">0 of 0 eligible voters</div>
+                    <div class="turnout-panel-time" id="ballot-turnout-time"></div>
+                </div>
+            </div>
+
             <!-- Ballot Form -->
             <form id="ballot-form" class="d-none">
                 <div id="positions-container"></div>
@@ -109,6 +121,7 @@
 let electionId = null;
 let electionName = '';
 let positionsData = [];
+let turnoutRefreshHandle = null;
 const ballotState = new Map(); // posId -> { candidates: Set<candId>, abstain: bool }
 
 // ── Initialization ──────────────────────────────────────────
@@ -130,13 +143,14 @@ const ballotState = new Map(); // posId -> { candidates: Set<candId>, abstain: b
             if (!active) {
                 const voted = (mineData.elections || []).find(e => e.status === 'active' && e.has_voted);
                 if (voted) {
-                    document.getElementById('already-voted-alert').classList.remove('d-none');
+                    targetElectionId = voted.id;
                 } else {
                     document.getElementById('no-election-alert').classList.remove('d-none');
+                    return;
                 }
-                return;
+            } else {
+                targetElectionId = active.id;
             }
-            targetElectionId = active.id;
         }
 
         const ballotData = await CEMS.api(`/api/elections/${targetElectionId}/ballot/`);
@@ -151,15 +165,18 @@ const ballotState = new Map(); // posId -> { candidates: Set<candId>, abstain: b
             return;
         }
 
+        electionId = ballotData.election.id;
+        electionName = ballotData.election.name;
+        positionsData = ballotData.positions || [];
+        document.getElementById('ballot-election-name').textContent = electionName;
+        renderTurnout(ballotData.turnout);
+        startTurnoutRefresh();
+
         if (ballotData.has_voted) {
             document.getElementById('already-voted-alert').classList.remove('d-none');
             return;
         }
 
-        electionId = ballotData.election.id;
-        electionName = ballotData.election.name;
-        positionsData = ballotData.positions || [];
-        document.getElementById('ballot-election-name').textContent = electionName;
         document.getElementById('ballot-form').classList.remove('d-none');
 
         initBallotState(positionsData);
@@ -184,6 +201,49 @@ function initBallotState(positions) {
     positions.forEach(pos => {
         ballotState.set(pos.id, { candidates: new Set(), abstain: false });
     });
+}
+
+function renderTurnout(turnout) {
+    if (!turnout) return;
+
+    const panel = document.getElementById('ballot-turnout-panel');
+    const percentEl = document.getElementById('ballot-turnout-percent');
+    const metaEl = document.getElementById('ballot-turnout-meta');
+    const timeEl = document.getElementById('ballot-turnout-time');
+
+    if (!panel || !percentEl || !metaEl || !timeEl) return;
+
+    percentEl.textContent = (turnout.turnout_percentage || 0) + '%';
+    metaEl.textContent = (turnout.total_voted || 0) + ' of ' + (turnout.total_eligible || 0) + ' eligible voters';
+
+    if (turnout.generated_at) {
+        const updatedAt = new Date(turnout.generated_at);
+        timeEl.textContent = 'Updated ' + updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } else {
+        timeEl.textContent = '';
+    }
+
+    panel.classList.remove('d-none');
+}
+
+async function refreshTurnout() {
+    if (!electionId) return;
+
+    try {
+        const res = await CEMS.api(`/api/elections/${electionId}/turnout/`);
+        if (res.success && res.turnout) {
+            renderTurnout(res.turnout);
+        }
+    } catch (err) {
+        // Keep the ballot usable even if turnout refresh fails.
+    }
+}
+
+function startTurnoutRefresh() {
+    if (turnoutRefreshHandle) {
+        window.clearInterval(turnoutRefreshHandle);
+    }
+    turnoutRefreshHandle = window.setInterval(refreshTurnout, 30000);
 }
 
 function selectCandidate(posId, candId) {
@@ -311,6 +371,9 @@ function renderPositions(positions) {
             ? '(select up to ' + pos.max_selections + ')'
             : '(select one)';
         const categoryBadge = getCategoryBadge(pos.category);
+        const singleCandidateNote = pos.single_candidate_threshold_applies
+            ? '<small class="position-rule-note"><i class="bi bi-shield-check me-1"></i>Single-candidate position: this candidate must reach 50% + 1 of registered voters for this seat.</small>'
+            : '';
 
         let candidatesHtml = '';
         pos.candidates.forEach(cand => {
@@ -356,6 +419,7 @@ function renderPositions(positions) {
             + '        ' + CEMS.escapeHtml(pos.title)
             + '      </h5>'
             + '      <small class="text-muted">' + maxNote + ' ' + categoryBadge + '</small>'
+            +        singleCandidateNote
             + '    </div>'
             + '    <span class="badge-status badge-draft" id="counter-' + pos.id + '">0 / ' + pos.max_selections + '</span>'
             + '  </div>'
@@ -469,6 +533,12 @@ document.addEventListener('keydown', function(e) {
             e.preventDefault();
             focused.click();
         }
+    }
+});
+
+window.addEventListener('beforeunload', function() {
+    if (turnoutRefreshHandle) {
+        window.clearInterval(turnoutRefreshHandle);
     }
 });
 </script>

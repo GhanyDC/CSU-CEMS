@@ -182,6 +182,15 @@
         } else {
             let html = '';
             for (const e of elections) {
+                const turnout = e.turnout || null;
+                const turnoutLabel = e.status === 'active' ? 'Current turnout' : 'Turnout';
+                const turnoutHtml = turnout
+                    ? `<div class="dash-turnout">
+                            <span class="dash-turnout-label">${turnoutLabel}</span>
+                            <span class="dash-turnout-value">${turnout.turnout_percentage}%</span>
+                            <span class="dash-turnout-meta">${turnout.total_voted} of ${turnout.total_eligible} voters</span>
+                       </div>`
+                    : '';
                 const typeLabel = e.election_type === 'campus' ? 'Campus Election' : `College · ${CEMS.escapeHtml(e.college || '')}`;
                 let statusBadge, actionBtn;
 
@@ -207,6 +216,7 @@
                                 ${statusBadge}
                             </div>
                             <span class="card-type">${typeLabel}</span>
+                            ${turnoutHtml}
                         </div>
                         <div>${actionBtn}</div>
                     </div>`;

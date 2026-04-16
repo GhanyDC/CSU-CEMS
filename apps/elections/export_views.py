@@ -106,15 +106,42 @@ def export_turnout_csv(request, election_id):
     # Summary
     writer.writerow(["Metric", "Value"])
     writer.writerow(["Total Registered/Approved Voters", turnout["total_eligible"]])
-    writer.writerow(["Total Ballots Cast", turnout["total_voted"]])
-    writer.writerow(["Overall Turnout %", f"{turnout['turnout_percentage']}%"])
+    if election.is_hybrid:
+        writer.writerow(["Online Ballots Cast", turnout["online_voted"]])
+        writer.writerow(["Onsite Turnout Rows", turnout["onsite_voted"]])
+        writer.writerow(["Combined Turnout", turnout["combined_voted"]])
+        writer.writerow(["Displayed Turnout Count", turnout["total_voted"]])
+        writer.writerow(["Online Turnout %", f"{turnout['online_turnout_percentage']}%"])
+        writer.writerow(["Onsite Turnout %", f"{turnout['onsite_turnout_percentage']}%"])
+        writer.writerow(["Combined Turnout %", f"{turnout['combined_turnout_percentage']}%"])
+    else:
+        writer.writerow(["Total Ballots Cast", turnout["total_voted"]])
+        writer.writerow(["Overall Turnout %", f"{turnout['turnout_percentage']}%"])
     writer.writerow([])
 
     # Per-college breakdown
     if turnout.get("by_college"):
-        writer.writerow(["College", "Eligible Voters"])
+        if election.is_hybrid:
+            writer.writerow([
+                "College",
+                "Eligible Voters",
+                "Online Voted",
+                "Onsite Voted",
+                "Combined Voted",
+            ])
+        else:
+            writer.writerow(["College", "Eligible Voters"])
         for entry in turnout["by_college"]:
-            writer.writerow([entry["college"], entry["eligible"]])
+            if election.is_hybrid:
+                writer.writerow([
+                    entry["college"],
+                    entry["eligible"],
+                    entry["online_voted"],
+                    entry["onsite_voted"],
+                    entry["combined_voted"],
+                ])
+            else:
+                writer.writerow([entry["college"], entry["eligible"]])
 
     _log_export(request, election, "turnout_csv")
     return response
@@ -159,15 +186,35 @@ def export_turnout_text(request, election_id):
         f"Status: {election.get_status_display()}",
         f"",
         f"Total Registered Voters: {turnout['total_eligible']:,}",
-        f"Total Ballots Cast: {turnout['total_voted']:,}",
-        f"Overall Turnout: {turnout['turnout_percentage']}%",
     ]
+    if election.is_hybrid:
+        lines += [
+            f"Online Ballots Cast: {turnout['online_voted']:,}",
+            f"Onsite Turnout Rows: {turnout['onsite_voted']:,}",
+            f"Combined Turnout: {turnout['combined_voted']:,}",
+            f"Displayed Turnout: {turnout['total_voted']:,}",
+            f"Online Turnout: {turnout['online_turnout_percentage']}%",
+            f"Onsite Turnout: {turnout['onsite_turnout_percentage']}%",
+            f"Combined Turnout: {turnout['combined_turnout_percentage']}%",
+        ]
+    else:
+        lines += [
+            f"Total Ballots Cast: {turnout['total_voted']:,}",
+            f"Overall Turnout: {turnout['turnout_percentage']}%",
+        ]
 
     if turnout.get("by_college"):
         lines.append("")
         lines.append("Turnout by College:")
         for entry in turnout["by_college"]:
-            lines.append(f"  {entry['college']}: {entry['eligible']:,} eligible")
+            if election.is_hybrid:
+                lines.append(
+                    f"  {entry['college']}: {entry['eligible']:,} eligible, "
+                    f"{entry['online_voted']:,} online, {entry['onsite_voted']:,} onsite, "
+                    f"{entry['combined_voted']:,} combined"
+                )
+            else:
+                lines.append(f"  {entry['college']}: {entry['eligible']:,} eligible")
 
     response = JsonResponse({
         "success": True,
@@ -233,12 +280,19 @@ def export_tally_csv(request, election_id):
     writer.writerow([])
 
     # Per-position results
-    writer.writerow([
-        "Position", "Category", "Candidate", "Party", "College",
-        "Votes", "Percentage", "Winner",
-        "Abstain Count", "Position Participation",
-        "Threshold Denominator", "50%+1 Threshold",
-    ])
+    if election.is_hybrid:
+        writer.writerow([
+            "Position", "Category", "Candidate", "Party", "College",
+            "Online Votes", "Onsite Votes", "Combined Votes", "Displayed Votes",
+            "Percentage", "Winner", "Threshold Denominator", "50%+1 Threshold",
+        ])
+    else:
+        writer.writerow([
+            "Position", "Category", "Candidate", "Party", "College",
+            "Votes", "Percentage", "Winner",
+            "Abstain Count", "Position Participation",
+            "Threshold Denominator", "50%+1 Threshold",
+        ])
 
     for pos in results["positions"]:
         total_votes = pos["total_votes"]
@@ -248,20 +302,37 @@ def export_tally_csv(request, election_id):
             is_winner = pos.get("winner") == cand["candidate"] if isinstance(pos.get("winner"), str) else (
                 cand["candidate"] in pos.get("winner", []) if isinstance(pos.get("winner"), list) else False
             )
-            writer.writerow([
-                pos["position"],
-                pos["category"],
-                cand["candidate"],
-                cand.get("party", ""),
-                cand.get("college", ""),
-                votes,
-                f"{pct}%",
-                "YES" if is_winner else "",
-                pos.get("abstain_count", ""),
-                pos.get("position_participation", ""),
-                pos.get("threshold_denominator", ""),
-                pos.get("threshold_50_plus_1", ""),
-            ])
+            if election.is_hybrid:
+                writer.writerow([
+                    pos["position"],
+                    pos["category"],
+                    cand["candidate"],
+                    cand.get("party", ""),
+                    cand.get("college", ""),
+                    cand.get("online_votes", 0),
+                    cand.get("onsite_votes", 0),
+                    cand.get("combined_votes", votes),
+                    votes,
+                    f"{pct}%",
+                    "YES" if is_winner else "",
+                    pos.get("threshold_denominator", ""),
+                    pos.get("threshold_50_plus_1", ""),
+                ])
+            else:
+                writer.writerow([
+                    pos["position"],
+                    pos["category"],
+                    cand["candidate"],
+                    cand.get("party", ""),
+                    cand.get("college", ""),
+                    votes,
+                    f"{pct}%",
+                    "YES" if is_winner else "",
+                    pos.get("abstain_count", ""),
+                    pos.get("position_participation", ""),
+                    pos.get("threshold_denominator", ""),
+                    pos.get("threshold_50_plus_1", ""),
+                ])
 
     _log_export(request, election, "tally_csv")
     return response
