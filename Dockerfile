@@ -20,7 +20,8 @@ FROM base AS builder
 
 WORKDIR /build
 COPY requirements/ requirements/
-RUN pip install --no-cache-dir --prefix=/install -r requirements/local.txt
+ARG REQUIREMENTS_FILE=requirements/production.txt
+RUN pip install --no-cache-dir --prefix=/install -r ${REQUIREMENTS_FILE}
 
 # ---------------------------------------------------------------------------
 # Runtime stage — non-root user
@@ -53,7 +54,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')" || exit 1
+    CMD python -c "import os, urllib.request; hosts=[h.strip() for h in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost').split(',') if h.strip() and h.strip() != '0.0.0.0']; host=next((h for h in hosts if h != '*'), 'localhost'); req=urllib.request.Request('http://127.0.0.1:8000/api/health/', headers={'Host': host, 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req)" || exit 1
 
 # Default: prepare writable runtime volumes, then run gunicorn as the cems user
 ENTRYPOINT ["sh", "/app/docker/entrypoint.sh"]

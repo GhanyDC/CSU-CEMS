@@ -9,6 +9,14 @@ if [ "$#" -gt 0 ]; then
     exec runuser -u cems -- "$@"
 fi
 
+if [ "${DJANGO_RUN_MIGRATIONS:-0}" = "1" ]; then
+    runuser -u cems -- python manage.py migrate --noinput
+fi
+
+if [ "${DJANGO_COLLECTSTATIC:-1}" = "1" ]; then
+    runuser -u cems -- python manage.py collectstatic --noinput
+fi
+
 exec runuser -u cems -- \
     gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \

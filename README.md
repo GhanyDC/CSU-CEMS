@@ -45,7 +45,9 @@ templates/     HTML templates
 Copy-Item .env.example .env
 ```
 
-2. Update `.env` with real values.
+2. Update `.env` with real values. For an external deployment, set
+   `DJANGO_ALLOWED_HOSTS` to the public host and
+   `DJANGO_CSRF_TRUSTED_ORIGINS` to the matching `https://...` origin.
 
 3. Start the production-style stack:
 
@@ -53,7 +55,15 @@ Copy-Item .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-4. Run migrations if needed:
+   The default production profile assumes TLS is terminated by an upstream
+   load balancer or reverse proxy before traffic reaches the bundled Nginx
+   container. If you want this Nginx container to serve HTTPS directly,
+   add a TLS server block and cert mounts before publishing port `443`.
+
+4. The production profile can bootstrap the database and shared static
+   volume on startup when `DJANGO_RUN_MIGRATIONS=1` and
+   `DJANGO_COLLECTSTATIC=1` are present in `.env`. If you prefer to run
+   migrations manually, set `DJANGO_RUN_MIGRATIONS=0` and then run:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec web python manage.py migrate
@@ -64,6 +74,7 @@ docker compose -f docker-compose.prod.yml exec web python manage.py migrate
 - `DJANGO_SECRET_KEY`
 - `DJANGO_SETTINGS_MODULE`
 - `DJANGO_ALLOWED_HOSTS`
+- `DJANGO_CSRF_TRUSTED_ORIGINS`
 - `POSTGRES_DB`
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`

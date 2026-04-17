@@ -4,6 +4,8 @@ Production settings for CEMS.
 Inherits from base.py. All security settings are kept at their
 hardened defaults defined in base.py.
 """
+from decouple import Csv, config
+
 from .base import *  # noqa: F401,F403
 
 # ---------------------------------------------------------------------------
@@ -18,6 +20,9 @@ DEBUG = False
 MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+CSRF_TRUSTED_ORIGINS = config("DJANGO_CSRF_TRUSTED_ORIGINS", default="", cast=Csv())
 
 # ---------------------------------------------------------------------------
 # Email — configure for production
