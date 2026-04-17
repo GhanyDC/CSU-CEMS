@@ -2,109 +2,88 @@
 {% load static %}
 
 {% block title %}Cast Your Vote{% endblock %}
+{% block body_class %}has-sidebar{% endblock %}
 
-{% block navbar %}
-<nav class="cems-navbar navbar">
-    <div class="container-fluid px-3">
-        <a class="navbar-brand d-flex align-items-center gap-2" href="/dashboard/">
-            <img src="{% static 'img/logo.png' %}" class="brand-logo-nav" alt="CEMS"
-                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
-            <span class="brand-icon" style="display:none">E</span>
-            <span class="fw-bold ms-1" style="font-size:1rem;letter-spacing:-0.01em">CEMS</span>
-        </a>
-        <div class="student-nav-links d-flex">
-            <a class="student-nav-link" href="/dashboard/">
-                <i class="bi bi-speedometer2"></i><span>Dashboard</span>
-            </a>
-            <a class="student-nav-link active" href="/ballot/">
-                <i class="bi bi-pencil-square"></i><span>Vote</span>
-            </a>
-            <a class="student-nav-link" href="/results/">
-                <i class="bi bi-bar-chart-fill"></i><span>Results</span>
-            </a>
-        </div>
-        <div class="d-flex align-items-center gap-2 gap-md-3">
-            <span class="student-nav-separator d-none d-md-block"></span>
-            <span class="student-nav-username d-none d-md-inline" id="nav-user-name"></span>
-            <a class="student-nav-link d-none" href="/admin-panel/" id="nav-admin" title="Admin Panel" style="padding:0.4rem 0.55rem">
-                <i class="bi bi-gear-fill"></i>
-            </a>
-            <button class="btn btn-sm btn-outline-light" id="logout-btn" title="Sign out">
-                <i class="bi bi-box-arrow-right"></i>
-                <span class="d-none d-sm-inline ms-1">Logout</span>
-            </button>
-        </div>
-    </div>
-</nav>
-{% endblock %}
+{% block layout %}
+{# Sidebar layout for student pages #}
+{% with active_page='ballot' %}
+    {% include 'frontend/_student_sidebar.html' %}
+{% endwith %}
 
-{% block content %}
-<div class="container-fluid px-3 px-md-4 py-3">
-    <div class="row justify-content-center">
-        <div class="col-lg-9">
-            <!-- Header -->
-            <a href="/dashboard/" class="text-decoration-none mb-3 d-inline-block" style="color:var(--cems-primary)"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
-            <h2 class="h3 mb-1"><i class="bi bi-pencil-square" style="color:var(--cems-primary)"></i> Cast Your Ballot</h2>
-            <p class="text-muted mb-4" id="ballot-election-name">Loading&hellip;</p>
+<div class="cems-main-content" id="main-content">
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toast-container"></div>
 
-            <!-- Already voted -->
-            <div class="alert d-none" id="already-voted-alert" style="background:var(--cems-success-bg);border:1px solid var(--cems-success);color:var(--cems-success);border-radius:var(--cems-radius-sm)">
-                <i class="bi bi-check-circle-fill"></i>
-                <strong>You have already voted in this election.</strong>
-                Your ballot was recorded successfully.
-                <a href="/results/" style="color:var(--cems-success);font-weight:600">View results &rarr;</a>
-            </div>
+    <div class="cems-page-container">
+        <div class="row justify-content-center">
+            <div class="col-lg-10 col-xl-9">
+                <!-- Header -->
+                <a href="/dashboard/" class="text-decoration-none mb-3 d-inline-block" style="color:var(--cems-primary)"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+                <h2 class="h3 mb-1"><i class="bi bi-pencil-square" style="color:var(--cems-primary)"></i> Cast Your Ballot</h2>
+                <p class="text-muted mb-4" id="ballot-election-name">Loading&hellip;</p>
 
-            <!-- No election -->
-            <div class="alert d-none" id="no-election-alert" style="background:var(--cems-info-bg);border:1px solid var(--cems-info);color:var(--cems-info);border-radius:var(--cems-radius-sm)">
-                <i class="bi bi-info-circle-fill"></i>
-                <strong>No active election.</strong> There is no election open for voting right now.
-                <a href="/dashboard/" style="color:var(--cems-info);font-weight:600">Dashboard &rarr;</a>
-            </div>
-
-            <div class="cems-card turnout-panel d-none" id="ballot-turnout-panel">
-                <div class="turnout-panel-icon">
-                    <i class="bi bi-people-fill"></i>
+                <!-- Already voted -->
+                <div class="alert d-none" id="already-voted-alert" style="background:var(--cems-success-bg);border:1px solid var(--cems-success);color:var(--cems-success);border-radius:var(--cems-radius-sm)">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <strong>You have already voted in this election.</strong>
+                    Your ballot was recorded successfully.
+                    <a href="/results/" style="color:var(--cems-success);font-weight:600">View results &rarr;</a>
                 </div>
-                <div class="turnout-panel-body">
-                    <div class="turnout-panel-label">Current turnout</div>
-                    <div class="turnout-panel-value"><span id="ballot-turnout-percent">0%</span></div>
-                    <div class="turnout-panel-meta" id="ballot-turnout-meta">0 of 0 eligible voters</div>
-                    <div class="turnout-panel-time" id="ballot-turnout-time"></div>
-                </div>
-            </div>
 
-            <!-- Ballot Form -->
-            <form id="ballot-form" class="d-none">
-                <div id="positions-container"></div>
-                <div class="cems-card p-4 mt-4">
-                    <h5><i class="bi bi-clipboard-check" style="color:var(--cems-primary)"></i> Review &amp; Submit</h5>
-                    <div id="ballot-summary" class="mt-3"></div>
-                    <hr>
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <p class="text-muted mb-0" style="font-size:0.85rem"><i class="bi bi-exclamation-triangle"></i> Once submitted, your vote <strong>cannot</strong> be changed.</p>
-                        <button type="submit" class="btn btn-cems-success btn-lg" id="submit-ballot-btn"><i class="bi bi-send-fill"></i> Submit Ballot</button>
+                <!-- No election -->
+                <div class="alert d-none" id="no-election-alert" style="background:var(--cems-info-bg);border:1px solid var(--cems-info);color:var(--cems-info);border-radius:var(--cems-radius-sm)">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <strong>No active election.</strong> There is no election open for voting right now.
+                    <a href="/dashboard/" style="color:var(--cems-info);font-weight:600">Dashboard &rarr;</a>
+                </div>
+
+                <div class="cems-card turnout-panel d-none" id="ballot-turnout-panel">
+                    <div class="turnout-panel-icon">
+                        <i class="bi bi-people-fill"></i>
+                    </div>
+                    <div class="turnout-panel-body">
+                        <div class="turnout-panel-label">Current turnout</div>
+                        <div class="turnout-panel-value"><span id="ballot-turnout-percent">0%</span></div>
+                        <div class="turnout-panel-meta" id="ballot-turnout-meta">0 of 0 eligible voters</div>
+                        <div class="turnout-panel-time" id="ballot-turnout-time"></div>
                     </div>
                 </div>
-            </form>
 
-            <!-- Success Modal -->
-            <div class="modal fade" id="successModal" tabindex="-1" data-bs-backdrop="static">
-                <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
-                    <div class="modal-body text-center p-5">
-                        <div style="color:var(--cems-success)" class="mb-3"><i class="bi bi-check-circle-fill" style="font-size:4rem"></i></div>
-                        <h3 class="fw-bold">Vote Submitted!</h3>
-                        <p class="text-muted">Your ballot has been recorded successfully.</p>
-                        <p class="small text-muted mb-1" id="success-election-line"></p>
-                        <p class="small text-muted mb-1" id="success-timestamp-line"></p>
-                        <p class="small text-muted">Ballot ID: <code id="ballot-id-display"></code></p>
-                        <p class="text-danger small mt-2 mb-3"><i class="bi bi-lock-fill me-1"></i>Your vote is anonymous and cannot be changed.</p>
-                        <a href="/dashboard/" class="btn btn-cems-primary btn-lg mt-2"><i class="bi bi-house"></i> Back to Dashboard</a>
+                <!-- Ballot Form -->
+                <form id="ballot-form" class="d-none">
+                    <div id="positions-container"></div>
+                    <div class="cems-card p-4 mt-4">
+                        <h5><i class="bi bi-clipboard-check" style="color:var(--cems-primary)"></i> Review &amp; Submit</h5>
+                        <div id="ballot-summary" class="mt-3"></div>
+                        <hr>
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <p class="text-muted mb-0" style="font-size:0.85rem"><i class="bi bi-exclamation-triangle"></i> Once submitted, your vote <strong>cannot</strong> be changed.</p>
+                            <button type="submit" class="btn btn-cems-success btn-lg" id="submit-ballot-btn"><i class="bi bi-send-fill"></i> Submit Ballot</button>
+                        </div>
                     </div>
-                </div></div>
+                </form>
+
+                <!-- Success Modal -->
+                <div class="modal fade" id="successModal" tabindex="-1" data-bs-backdrop="static">
+                    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+                        <div class="modal-body text-center p-5">
+                            <div style="color:var(--cems-success)" class="mb-3"><i class="bi bi-check-circle-fill" style="font-size:4rem"></i></div>
+                            <h3 class="fw-bold">Vote Submitted!</h3>
+                            <p class="text-muted">Your ballot has been recorded successfully.</p>
+                            <p class="small text-muted mb-1" id="success-election-line"></p>
+                            <p class="small text-muted mb-1" id="success-timestamp-line"></p>
+                            <p class="small text-muted">Ballot ID: <code id="ballot-id-display"></code></p>
+                            <p class="text-danger small mt-2 mb-3"><i class="bi bi-lock-fill me-1"></i>Your vote is anonymous and cannot be changed.</p>
+                            <a href="/dashboard/" class="btn btn-cems-primary btn-lg mt-2"><i class="bi bi-house"></i> Back to Dashboard</a>
+                        </div>
+                    </div></div>
+                </div>
             </div>
         </div>
     </div>
+
+    <footer class="text-center text-muted py-3 mt-auto border-top">
+        <small>&copy; 2026 CEMS — Campus Election Management System</small>
+    </footer>
 </div>
 {% endblock %}
 
@@ -129,9 +108,9 @@ const ballotState = new Map(); // posId -> { candidates: Set<candId>, abstain: b
 (async function init() {
     const user = CEMS.getUser();
     if (!user) { window.location.href = '/'; return; }
-    document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
-    if (user.is_admin) document.getElementById('nav-admin').classList.remove('d-none');
-    document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
+
+    // Initialize sidebar with user data
+    CEMS.initStudentNav(user);
 
     const params = new URLSearchParams(window.location.search);
     let targetElectionId = params.get('election');
@@ -508,7 +487,7 @@ document.getElementById('ballot-form').addEventListener('submit', async function
 // ── Error & Edge-Case Handling ──────────────────────────────
 
 function showSessionExpired() {
-    const container = document.querySelector('.col-lg-9');
+    const container = document.querySelector('.col-lg-10');
     if (!container) return;
     const banner = document.createElement('div');
     banner.className = 'session-expiry-banner mb-3';

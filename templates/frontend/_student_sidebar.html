@@ -1,0 +1,83 @@
+{% load static %}
+{% comment %}
+  Responsive sidebar navigation for student-facing pages.
+  Included automatically by base.html when {% block use_sidebar %}true{% endblock %} is set.
+
+  Required JS: CEMS.initSidebar() must be called (handled by base.html).
+{% endcomment %}
+
+<!-- Mobile Top Bar (visible < 992px) -->
+<div class="cems-mobile-topbar" id="mobile-topbar">
+    <button class="cems-hamburger" id="sidebar-toggle" aria-label="Open navigation menu">
+        <span></span><span></span><span></span>
+    </button>
+    <a class="cems-mobile-brand" href="/dashboard/">
+        <img src="{% static 'img/logo.png' %}" class="cems-mobile-logo" alt="CEMS"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+        <span class="cems-mobile-brand-icon" style="display:none">E</span>
+        <span class="cems-mobile-brand-text">CEMS</span>
+    </a>
+    <button class="cems-mobile-logout" id="mobile-logout-btn" title="Sign out">
+        <i class="bi bi-box-arrow-right"></i>
+    </button>
+</div>
+
+<!-- Sidebar Overlay (mobile only) -->
+<div class="cems-sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- Sidebar -->
+<aside class="cems-sidebar" id="cems-sidebar">
+    <!-- Brand -->
+    <div class="cems-sidebar-brand">
+        <a href="/dashboard/" class="cems-sidebar-brand-link">
+            <img src="{% static 'img/logo.png' %}" class="cems-sidebar-logo" alt="CEMS"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+            <span class="cems-sidebar-brand-icon" style="display:none">E</span>
+            <div class="cems-sidebar-brand-text">
+                <span class="cems-sidebar-brand-name">CEMS</span>
+                <span class="cems-sidebar-brand-sub">Election Portal</span>
+            </div>
+        </a>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="cems-sidebar-nav" id="sidebar-nav">
+        <div class="cems-sidebar-nav-label">Navigation</div>
+        <a class="cems-sidebar-link {% if active_page == 'dashboard' %}active{% endif %}"
+           href="/dashboard/" data-page="dashboard" id="sidebar-link-dashboard">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+        </a>
+        <a class="cems-sidebar-link {% if active_page == 'ballot' %}active{% endif %}"
+           href="/ballot/" data-page="ballot" id="sidebar-link-ballot">
+            <i class="bi bi-pencil-square"></i>
+            <span>Vote</span>
+        </a>
+        <a class="cems-sidebar-link {% if active_page == 'results' %}active{% endif %}"
+           href="/results/" data-page="results" id="sidebar-link-results">
+            <i class="bi bi-bar-chart-fill"></i>
+            <span>Results</span>
+        </a>
+
+        <!-- Admin link (hidden by default, shown via JS for admin users) -->
+        <div class="cems-sidebar-nav-divider d-none" id="sidebar-admin-section"></div>
+        <a class="cems-sidebar-link d-none" href="/admin-panel/" id="sidebar-admin-link">
+            <i class="bi bi-gear-fill"></i>
+            <span>Admin Panel</span>
+        </a>
+    </nav>
+
+    <!-- User Card -->
+    <div class="cems-sidebar-user" id="sidebar-user-card">
+        <div class="cems-sidebar-user-avatar" id="sidebar-user-avatar">
+            <i class="bi bi-person-fill"></i>
+        </div>
+        <div class="cems-sidebar-user-info">
+            <div class="cems-sidebar-user-name" id="sidebar-user-name">Student</div>
+            <div class="cems-sidebar-user-detail" id="sidebar-user-college"></div>
+        </div>
+        <button class="cems-sidebar-logout" id="sidebar-logout-btn" title="Sign out">
+            <i class="bi bi-box-arrow-right"></i>
+        </button>
+    </div>
+</aside>

@@ -2,94 +2,73 @@
 {% load static %}
 
 {% block title %}Dashboard{% endblock %}
+{% block body_class %}has-sidebar{% endblock %}
 
-{% block navbar %}
-<nav class="cems-navbar navbar">
-    <div class="container-fluid px-3">
-        <a class="navbar-brand d-flex align-items-center gap-2" href="/dashboard/">
-            <img src="{% static 'img/logo.png' %}" class="brand-logo-nav" alt="CEMS"
-                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
-            <span class="brand-icon" style="display:none">E</span>
-            <span class="fw-bold ms-1" style="font-size:1rem;letter-spacing:-0.01em">CEMS</span>
-        </a>
-        <div class="student-nav-links d-flex">
-            <a class="student-nav-link active" href="/dashboard/">
-                <i class="bi bi-speedometer2"></i><span>Dashboard</span>
-            </a>
-            <a class="student-nav-link" href="/ballot/">
-                <i class="bi bi-pencil-square"></i><span>Vote</span>
-            </a>
-            <a class="student-nav-link" href="/results/">
-                <i class="bi bi-bar-chart-fill"></i><span>Results</span>
-            </a>
+{% block layout %}
+{# Sidebar layout for student pages #}
+{% with active_page='dashboard' %}
+    {% include 'frontend/_student_sidebar.html' %}
+{% endwith %}
+
+<div class="cems-main-content" id="main-content">
+    <div class="toast-container position-fixed top-0 end-0 p-3" id="toast-container"></div>
+
+    <div class="cems-page-container">
+        <!-- Welcome Banner -->
+        <div class="welcome-banner mb-4">
+            <h3><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
+            <p>Campus Election Management System — Your vote matters.</p>
+            <div class="welcome-college" id="welcome-college"></div>
         </div>
-        <div class="d-flex align-items-center gap-2 gap-md-3">
-            <span class="student-nav-separator d-none d-md-block"></span>
-            <span class="student-nav-username d-none d-md-inline" id="nav-user-name"></span>
-            <a class="student-nav-link d-none" href="/admin-panel/" id="nav-admin" title="Admin Panel" style="padding:0.4rem 0.55rem">
-                <i class="bi bi-gear-fill"></i>
-            </a>
-            <button class="btn btn-sm btn-outline-light" id="logout-btn" title="Sign out">
-                <i class="bi bi-box-arrow-right"></i>
-                <span class="d-none d-sm-inline ms-1">Logout</span>
-            </button>
-        </div>
-    </div>
-</nav>
-{% endblock %}
 
-{% block content %}
-<div class="container-fluid px-3 px-md-4 py-3">
-    <!-- Welcome Banner -->
-    <div class="welcome-banner mb-4">
-        <h3><i class="bi bi-hand-thumbs-up"></i> Welcome, <span id="welcome-name">Student</span>!</h3>
-        <p>Campus Election Management System — Your vote matters.</p>
-        <div class="welcome-college" id="welcome-college"></div>
-    </div>
-
-    <!-- Metric Cards -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="metric-card text-center" style="min-height:140px">
-                <div class="mb-2"><i class="bi bi-calendar-event" style="font-size:2rem;color:var(--cems-primary)"></i></div>
-                <div class="metric-label">Election Status</div>
-                <div id="election-status-badge"><span class="badge-status badge-draft">Loading&hellip;</span></div>
-                <div class="metric-sub mt-1" id="election-name-text">—</div>
+        <!-- Metric Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-md-4">
+                <div class="metric-card text-center" style="min-height:140px">
+                    <div class="mb-2"><i class="bi bi-calendar-event" style="font-size:2rem;color:var(--cems-primary)"></i></div>
+                    <div class="metric-label">Election Status</div>
+                    <div id="election-status-badge"><span class="badge-status badge-draft">Loading&hellip;</span></div>
+                    <div class="metric-sub mt-1" id="election-name-text">&mdash;</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-4">
+                <div class="metric-card text-center" style="min-height:140px">
+                    <div class="mb-2"><i class="bi bi-check2-circle" style="font-size:2rem;color:var(--cems-success)"></i></div>
+                    <div class="metric-label">Your Vote</div>
+                    <div id="vote-status-badge"><span class="badge-status badge-draft">Loading&hellip;</span></div>
+                    <div class="metric-sub mt-1" id="vote-status-text">&mdash;</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-md-4">
+                <div class="metric-card text-center" style="min-height:140px">
+                    <div class="mb-2"><i class="bi bi-clock" style="font-size:2rem;color:var(--cems-warning)"></i></div>
+                    <div class="metric-label">Time Remaining</div>
+                    <div id="time-remaining"><span class="badge-status badge-draft">&mdash;</span></div>
+                    <div class="metric-sub mt-1" id="time-detail-text">Until active election closes</div>
+                </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="metric-card text-center" style="min-height:140px">
-                <div class="mb-2"><i class="bi bi-check2-circle" style="font-size:2rem;color:var(--cems-success)"></i></div>
-                <div class="metric-label">Your Vote</div>
-                <div id="vote-status-badge"><span class="badge-status badge-draft">Loading&hellip;</span></div>
-                <div class="metric-sub mt-1" id="vote-status-text">—</div>
+
+        <!-- Elections & Info -->
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="cems-card p-4">
+                    <h5 class="mb-3"><i class="bi bi-lightning-fill" style="color:var(--cems-accent)"></i> Your Elections</h5>
+                    <div id="elections-list"><div class="text-muted">Loading&hellip;</div></div>
+                </div>
             </div>
-        </div>
-        <div class="col-md-4">
-            <div class="metric-card text-center" style="min-height:140px">
-                <div class="mb-2"><i class="bi bi-clock" style="font-size:2rem;color:var(--cems-warning)"></i></div>
-                <div class="metric-label">Time Remaining</div>
-                <div id="time-remaining"><span class="badge-status badge-draft">—</span></div>
-                <div class="metric-sub mt-1" id="time-detail-text">Until active election closes</div>
+            <div class="col-lg-5">
+                <div class="cems-card p-4">
+                    <h5 class="mb-3"><i class="bi bi-info-circle" style="color:var(--cems-info)"></i> Election Info</h5>
+                    <div id="election-info"><div class="text-muted">Loading&hellip;</div></div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Elections & Info -->
-    <div class="row g-3">
-        <div class="col-md-7">
-            <div class="cems-card p-4">
-                <h5 class="mb-3"><i class="bi bi-lightning-fill" style="color:var(--cems-accent)"></i> Your Elections</h5>
-                <div id="elections-list"><div class="text-muted">Loading&hellip;</div></div>
-            </div>
-        </div>
-        <div class="col-md-5">
-            <div class="cems-card p-4">
-                <h5 class="mb-3"><i class="bi bi-info-circle" style="color:var(--cems-info)"></i> Election Info</h5>
-                <div id="election-info"><div class="text-muted">Loading&hellip;</div></div>
-            </div>
-        </div>
-    </div>
+    <footer class="text-center text-muted py-3 mt-auto border-top">
+        <small>&copy; 2026 CEMS — Campus Election Management System</small>
+    </footer>
 </div>
 {% endblock %}
 
@@ -99,17 +78,13 @@
     const user = CEMS.getUser();
     if (!user) { window.location.href = '/'; return; }
 
-    document.getElementById('nav-user-name').textContent = user.full_name || user.student_id;
+    // Initialize sidebar with user data
+    CEMS.initStudentNav(user);
+
     document.getElementById('welcome-name').textContent = user.full_name || user.student_id;
     if (user.college) document.getElementById('welcome-college').textContent = user.college;
 
-    if (user.is_admin) {
-        document.getElementById('nav-admin').classList.remove('d-none');
-    }
-
-    document.getElementById('logout-btn').addEventListener('click', () => CEMS.logout());
-
-    // Fetch eligible elections via the new /api/elections/mine/ endpoint
+    // Fetch eligible elections via the /api/elections/mine/ endpoint
     try {
         const data = await CEMS.api('/api/elections/mine/');
         const elections = data.elections || [];

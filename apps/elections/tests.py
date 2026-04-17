@@ -172,6 +172,40 @@ class HybridElectionServiceTests(HybridElectionTestBase):
             1,
         )
 
+    def test_roster_reimport_supersedes_active_tally_and_blocks_publish(self):
+        self.import_valid_roster()
+        self.import_valid_tally()
+        self.assertTrue(HybridElectionService.has_required_imports(self.election))
+
+        result = HybridElectionService.import_onsite_roster(
+            self.election,
+            [{"student_id": self.students[3].student_id}],
+            imported_by="Tester",
+            source_filename="roster_refresh.csv",
+        )
+
+        self.assertIn("Existing onsite tally import was cleared", result["message"])
+        self.assertFalse(HybridElectionService.has_required_imports(self.election))
+        self.assertEqual(
+            HybridImportBatch.objects.filter(
+                election=self.election,
+                batch_type=HybridImportBatch.BatchType.TALLY,
+                status=HybridImportBatch.Status.ACTIVE,
+            ).count(),
+            0,
+        )
+        self.assertEqual(
+            HybridImportBatch.objects.filter(
+                election=self.election,
+                batch_type=HybridImportBatch.BatchType.TALLY,
+                status=HybridImportBatch.Status.SUPERSEDED,
+            ).count(),
+            1,
+        )
+
+        with self.assertRaises(ElectionNotReadyError):
+            ElectionLifecycleService.publish_results(self.election, performed_by="tester")
+
     def test_tally_import_requires_full_candidate_coverage(self):
         self.import_valid_roster()
         with self.assertRaises(HybridElectionError) as ctx:
@@ -190,6 +224,37 @@ class HybridElectionServiceTests(HybridElectionTestBase):
                 source_filename="incomplete_tally.csv",
             )
         self.assertIn("missing required candidate rows", " ".join(ctx.exception.summary.get("errors", [])))
+
+    def test_tally_import_rejects_position_totals_above_onsite_turnout_capacity(self):
+        self.import_valid_roster()
+
+        with self.assertRaises(HybridElectionError) as ctx:
+            HybridElectionService.import_onsite_tally(
+                self.election,
+                [
+                    {
+                        "position_id": str(self.position.pk),
+                        "position_title": self.position.title,
+                        "candidate_id": str(self.candidate_a.pk),
+                        "candidate_name": self.candidate_a.full_name,
+                        "onsite_votes": "2",
+                    },
+                    {
+                        "position_id": str(self.position.pk),
+                        "position_title": self.position.title,
+                        "candidate_id": str(self.candidate_b.pk),
+                        "candidate_name": self.candidate_b.full_name,
+                        "onsite_votes": "1",
+                    },
+                ],
+                imported_by="Tester",
+                source_filename="over_limit_tally.csv",
+            )
+
+        self.assertIn(
+            "exceeds the maximum",
+            " ".join(ctx.exception.summary.get("errors", [])),
+        )
 
     def test_combined_results_and_publish_gate_for_hybrid(self):
         self.cast_online_vote(self.students[0], self.candidate_a)

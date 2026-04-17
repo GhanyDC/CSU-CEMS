@@ -151,5 +151,103 @@ const CEMS = {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    },
+
+    // ── Sidebar Navigation ─────────────────────────────────────
+
+    /**
+     * Initialize the sidebar drawer (hamburger toggle, overlay, Escape key).
+     * Called automatically when the page has a sidebar.
+     */
+    initSidebar() {
+        const sidebar = document.getElementById('cems-sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        const toggle = document.getElementById('sidebar-toggle');
+        if (!sidebar || !overlay || !toggle) return;
+
+        const openSidebar = () => {
+            sidebar.classList.add('open');
+            overlay.classList.add('open');
+            toggle.classList.add('active');
+            document.body.classList.add('sidebar-open');
+        };
+
+        const closeSidebar = () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            toggle.classList.remove('active');
+            document.body.classList.remove('sidebar-open');
+        };
+
+        toggle.addEventListener('click', () => {
+            if (sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+
+        overlay.addEventListener('click', closeSidebar);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+                closeSidebar();
+            }
+        });
+
+        // Close sidebar on nav link click (mobile)
+        sidebar.querySelectorAll('.cems-sidebar-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 992) {
+                    closeSidebar();
+                }
+            });
+        });
+    },
+
+    /**
+     * Initialize the student navigation elements (user name, admin link, logout).
+     * Replaces the old duplicated per-page nav init code.
+     * @param {Object} user - The user object from CEMS.getUser()
+     */
+    initStudentNav(user) {
+        if (!user) return;
+
+        // Sidebar user card
+        const nameEl = document.getElementById('sidebar-user-name');
+        if (nameEl) nameEl.textContent = user.full_name || user.student_id;
+
+        const collegeEl = document.getElementById('sidebar-user-college');
+        if (collegeEl) collegeEl.textContent = user.college || '';
+
+        const avatarEl = document.getElementById('sidebar-user-avatar');
+        if (avatarEl && user.full_name) {
+            const initials = user.full_name
+                .split(' ')
+                .filter(Boolean)
+                .map(w => w[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase();
+            avatarEl.innerHTML = '<span>' + initials + '</span>';
+        }
+
+        // Admin link
+        if (user.is_admin) {
+            const adminLink = document.getElementById('sidebar-admin-link');
+            const adminSection = document.getElementById('sidebar-admin-section');
+            if (adminLink) adminLink.classList.remove('d-none');
+            if (adminSection) adminSection.classList.remove('d-none');
+        }
+
+        // Logout handlers
+        const logoutBtn = document.getElementById('sidebar-logout-btn');
+        if (logoutBtn) logoutBtn.addEventListener('click', () => CEMS.logout());
+
+        const mobileLogoutBtn = document.getElementById('mobile-logout-btn');
+        if (mobileLogoutBtn) mobileLogoutBtn.addEventListener('click', () => CEMS.logout());
+
+        // Initialize sidebar toggle behavior
+        CEMS.initSidebar();
     }
 };

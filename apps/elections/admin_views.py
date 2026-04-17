@@ -14,6 +14,7 @@ from PIL import Image
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_POST

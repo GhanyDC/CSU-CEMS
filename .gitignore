@@ -52,9 +52,13 @@ htmlcov/
 .coverage
 .coverage.*
 coverage.xml
+.pytest_cache/
 
 # mypy
 .mypy_cache/
+
+# Local runtime artifacts
+.gunicorn/
 
 # Internal project notes / AI handoff docs
 PROJECT_BRIEFING_FOR_CHATGPT.md

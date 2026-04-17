@@ -14,6 +14,7 @@ from apps.elections.models import (
     HybridImportBatch,
     OnsiteParticipation,
     OnsiteTally,
+    Position,
 )
 from apps.voting.models import Ballot, BallotSelection
 
@@ -137,12 +138,79 @@ class HybridElectionService:
 
     @classmethod
     def has_required_imports(cls, election: Election) -> bool:
+        return cls.get_publish_readiness(election)["ready"]
+
+    @classmethod
+    def _build_tally_limit_errors(
+        cls,
+        election: Election,
+        *,
+        onsite_participant_count: int,
+        position_vote_totals: dict[str, int],
+    ) -> list[str]:
+        """Validate aggregate onsite votes against the imported onsite turnout."""
+        position_map = {
+            str(position.pk): position
+            for position in Position.objects.filter(election=election).only(
+                "pk", "title", "max_selections"
+            )
+        }
+        errors: list[str] = []
+        for position_id, total_votes in position_vote_totals.items():
+            position = position_map.get(str(position_id))
+            if position is None:
+                errors.append(
+                    f"Onsite tally references an unknown position: {position_id}."
+                )
+                continue
+
+            max_allowed_votes = onsite_participant_count * position.max_selections
+            if total_votes > max_allowed_votes:
+                errors.append(
+                    f"Onsite tally total for '{position.title}' exceeds the maximum of "
+                    f"{max_allowed_votes} vote(s) for {onsite_participant_count} "
+                    f"onsite participant(s)."
+                )
+        return errors
+
+    @classmethod
+    def get_publish_readiness(cls, election: Election) -> dict:
+        """Return whether the active hybrid imports are safe to publish."""
         if not election.is_hybrid:
-            return True
-        return bool(
-            cls.get_active_batch(election, HybridImportBatch.BatchType.ROSTER)
-            and cls.get_active_batch(election, HybridImportBatch.BatchType.TALLY)
-        )
+            return {"ready": True, "errors": []}
+
+        roster_batch = cls.get_active_batch(election, HybridImportBatch.BatchType.ROSTER)
+        tally_batch = cls.get_active_batch(election, HybridImportBatch.BatchType.TALLY)
+        errors: list[str] = []
+
+        if roster_batch is None:
+            errors.append("An active onsite roster import is required.")
+        if tally_batch is None:
+            errors.append("An active onsite tally import is required.")
+
+        if roster_batch is not None and tally_batch is not None:
+            if tally_batch.created_at < roster_batch.created_at:
+                errors.append(
+                    "The active onsite tally predates the current onsite roster import. "
+                    "Re-import the onsite tally for the current roster."
+                )
+
+            onsite_participant_count = roster_batch.participations.count()
+            position_vote_totals = {
+                str(row["position_id"]): int(row["total_votes"] or 0)
+                for row in tally_batch.tallies.values("position_id").annotate(
+                    total_votes=Sum("onsite_votes")
+                )
+            }
+            errors.extend(
+                cls._build_tally_limit_errors(
+                    election,
+                    onsite_participant_count=onsite_participant_count,
+                    position_vote_totals=position_vote_totals,
+                )
+            )
+
+        return {"ready": not errors, "errors": errors}
 
     @classmethod
     def build_tally_template_rows(cls, election: Election) -> list[dict]:
@@ -246,12 +314,14 @@ class HybridElectionService:
         latest_tally = cls.get_latest_batch(election, HybridImportBatch.BatchType.TALLY)
         active_roster = cls.get_active_batch(election, HybridImportBatch.BatchType.ROSTER)
         active_tally = cls.get_active_batch(election, HybridImportBatch.BatchType.TALLY)
+        readiness = cls.get_publish_readiness(election)
 
         return {
             "mode": election.voting_mode,
             "is_hybrid": election.is_hybrid,
             "can_import": election.is_hybrid and election.status == Election.Status.CLOSED,
-            "ready_to_publish": cls.has_required_imports(election),
+            "ready_to_publish": readiness["ready"],
+            "publish_blockers": readiness["errors"],
             "roster_import": {
                 "active": cls._serialize_batch(active_roster),
                 "latest": cls._serialize_batch(latest_roster),
@@ -413,6 +483,11 @@ class HybridElectionService:
             batch_type=HybridImportBatch.BatchType.ROSTER,
             status=HybridImportBatch.Status.ACTIVE,
         ).update(status=HybridImportBatch.Status.SUPERSEDED, updated_at=timezone.now())
+        superseded_tally_count = HybridImportBatch.objects.filter(
+            election=election,
+            batch_type=HybridImportBatch.BatchType.TALLY,
+            status=HybridImportBatch.Status.ACTIVE,
+        ).update(status=HybridImportBatch.Status.SUPERSEDED, updated_at=timezone.now())
 
         batch = cls._record_batch(
             election=election,
@@ -429,11 +504,14 @@ class HybridElectionService:
         OnsiteParticipation.objects.bulk_create(
             [OnsiteParticipation(batch=batch, student=student) for student in valid_students]
         )
+        message = f"Imported {len(valid_students)} onsite voter turnout row(s)."
+        if superseded_tally_count:
+            message += " Existing onsite tally import was cleared; re-import the tally for this roster."
 
         return {
             "batch": cls._serialize_batch(batch),
             "summary": summary,
-            "message": f"Imported {len(valid_students)} onsite voter turnout row(s).",
+            "message": message,
         }
 
     @classmethod
@@ -448,10 +526,12 @@ class HybridElectionService:
     ) -> dict:
         cls._require_hybrid_closed(election)
 
-        if not cls.get_active_batch(election, HybridImportBatch.BatchType.ROSTER):
+        roster_batch = cls.get_active_batch(election, HybridImportBatch.BatchType.ROSTER)
+        if not roster_batch:
             raise HybridElectionError(
                 "Import the onsite voter roster before importing onsite tallies."
             )
+        onsite_participant_count = roster_batch.participations.count()
 
         headers = cls._normalize_headers(rows)
         missing_headers = sorted(cls.TALLY_REQUIRED_COLUMNS - headers)
@@ -486,6 +566,7 @@ class HybridElectionService:
         seen_keys: set[tuple[str, str]] = set()
         rows_to_create = []
         errors: list[str] = []
+        position_vote_totals: dict[str, int] = defaultdict(int)
 
         for row in rows:
             position_id = str((row.get("position_id") or "")).strip()
@@ -531,6 +612,7 @@ class HybridElectionService:
                 continue
 
             rows_to_create.append((candidate.position, candidate, onsite_votes))
+            position_vote_totals[str(candidate.position_id)] += onsite_votes
 
         missing_rows = expected_keys - seen_keys
         if missing_rows:
@@ -545,9 +627,17 @@ class HybridElectionService:
                 + ", ".join(missing_examples)
                 + ("..." if len(missing_rows) > 10 else "")
             )
+        errors.extend(
+            cls._build_tally_limit_errors(
+                election,
+                onsite_participant_count=onsite_participant_count,
+                position_vote_totals=position_vote_totals,
+            )
+        )
 
         summary = {
             "errors": errors,
+            "onsite_participant_count": onsite_participant_count,
             "expected_candidate_rows": len(expected_keys),
             "received_candidate_rows": len(seen_keys),
             "valid_candidate_rows": len(rows_to_create),
