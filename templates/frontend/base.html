@@ -35,7 +35,7 @@
     {% if bootstrap_admin is not None and bootstrap_admin %}
         {{ bootstrap_admin|json_script:"cems-bootstrap-admin" }}
     {% endif %}
-    <script src="{% static 'js/cems.js' %}"></script>
+    <script src="{% static 'js/cems.js' %}?v=1.1"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -57,6 +57,11 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # ---------------------------------------------------------------------------
 LOGGING = copy.deepcopy(LOGGING)  # noqa: F405
 LOGGING["loggers"]["django"]["level"] = "DEBUG"
+LOGGING["loggers"]["django.template"] = {
+    "handlers": ["console"],
+    "level": "INFO",
+    "propagate": False,
+}
 
 # Avoid writing log files inside the project tree in development.
 # Django's autoreloader watches the repo and can reload on each request
