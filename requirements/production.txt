@@ -1,7 +1,4 @@
 -r base.txt
 
-# Production security
-django-secure>=1.0.2
-
 # Static files
 whitenoise>=6.6.0
