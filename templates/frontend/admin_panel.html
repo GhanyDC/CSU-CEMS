@@ -929,6 +929,49 @@ function renderOverview() {
         </div>`;
     }
 
+    // ── Turnout by College ───────────────────────────────────────────────
+    const byCollege = (t.by_college || []);
+    if (el.status !== 'draft' && byCollege.length > 1) {
+        const collegeHeaders = isHybrid
+            ? '<th>College</th><th class="text-end">Eligible</th><th class="text-end">Online</th><th class="text-end">Onsite</th><th class="text-end">Combined</th><th class="text-end">Turnout %</th>'
+            : '<th>College</th><th class="text-end">Eligible</th><th class="text-end">Voted</th><th class="text-end">Turnout %</th>';
+        const collegeRows = byCollege.map(c => {
+            const collegePct = c.eligible > 0
+                ? (isHybrid ? c.combined_percentage : c.online_percentage)
+                : 0;
+            const pctColor = collegePct >= 50 ? 'var(--cems-success)' : (collegePct > 0 ? 'var(--cems-warning)' : 'var(--cems-text-secondary)');
+            if (isHybrid) {
+                return `<tr>
+                    <td>${esc(c.college || 'Unknown')}</td>
+                    <td class="text-end">${c.eligible.toLocaleString()}</td>
+                    <td class="text-end">${c.online_voted.toLocaleString()}</td>
+                    <td class="text-end">${c.onsite_voted.toLocaleString()}</td>
+                    <td class="text-end">${c.combined_voted.toLocaleString()}</td>
+                    <td class="text-end" style="color:${pctColor};font-weight:600">${collegePct.toFixed(1)}%</td>
+                </tr>`;
+            }
+            return `<tr>
+                <td>${esc(c.college || 'Unknown')}</td>
+                <td class="text-end">${c.eligible.toLocaleString()}</td>
+                <td class="text-end">${c.online_voted.toLocaleString()}</td>
+                <td class="text-end" style="color:${pctColor};font-weight:600">${collegePct.toFixed(1)}%</td>
+            </tr>`;
+        }).join('');
+        html += `<div class="cems-card mb-4">
+            <div class="cems-card-header d-flex align-items-center gap-2">
+                <i class="bi bi-building" style="color:var(--cems-primary)"></i>
+                <span class="fw-semibold">Turnout by College</span>
+                <span class="ms-auto text-muted" style="font-size:0.8rem">${byCollege.length} college${byCollege.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" style="font-size:0.85rem">
+                    <thead><tr>${collegeHeaders}</tr></thead>
+                    <tbody>${collegeRows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+
     // ── Non-draft: positions summary ─────────────────────────────────────
     if (el.status !== 'draft' && el.positions.length) {
         html += `<div class="cems-card mb-4">

@@ -130,7 +130,7 @@ def export_turnout_csv(request, election_id):
                 "Combined Voted",
             ])
         else:
-            writer.writerow(["College", "Eligible Voters"])
+            writer.writerow(["College", "Eligible Voters", "Voted", "Turnout %"])
         for entry in turnout["by_college"]:
             if election.is_hybrid:
                 writer.writerow([
@@ -141,7 +141,12 @@ def export_turnout_csv(request, election_id):
                     entry["combined_voted"],
                 ])
             else:
-                writer.writerow([entry["college"], entry["eligible"]])
+                writer.writerow([
+                    entry["college"],
+                    entry["eligible"],
+                    entry["online_voted"],
+                    f"{entry['online_percentage']}%",
+                ])
 
     _log_export(request, election, "turnout_csv")
     return response

@@ -221,6 +221,7 @@ def _serialize_election_detail(election):
             "onsite_turnout_percentage": turnout["onsite_turnout_percentage"],
             "combined_turnout_percentage": turnout["combined_turnout_percentage"],
             "has_official_onsite_turnout": turnout["has_official_onsite_turnout"],
+            "by_college": turnout.get("by_college", []),
         },
         "banner_url": _get_banner_url(election),
         "hybrid": hybrid_summary,
