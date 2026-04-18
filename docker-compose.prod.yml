@@ -60,14 +60,12 @@ services:
     restart: always
     ports:
       - "80:80"
-      # Publish 443 only if this Nginx container is configured to terminate TLS.
-      # Otherwise keep TLS at an upstream load balancer or reverse proxy.
+      - "443:443"
     volumes:
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - static_volume:/app/staticfiles:ro
       - media_volume:/app/media:ro
-      # Mount SSL certs here for production:
-      # - ./certs:/etc/nginx/certs:ro
+      - /opt/cems/certs:/etc/nginx/certs:ro
     depends_on:
       - web
 

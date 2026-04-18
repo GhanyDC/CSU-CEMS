@@ -20,7 +20,7 @@ const CEMS = {
             credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRFToken': CEMS.getCookie('csrftoken'),
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || CEMS.getCookie('csrftoken'),
             },
         };
 

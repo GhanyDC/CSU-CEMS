@@ -104,6 +104,7 @@ def admin_page(request):
     if profile is None:
         return redirect("frontend:admin-login")
 
+    get_token(request)
     context = {
         "bootstrap_admin": {
             "username": request.user.username,

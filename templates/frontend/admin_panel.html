@@ -551,6 +551,9 @@
 // ══════════════════════════════════════════════════════════════════════════
 //  CEMS Admin Panel – Builder.io-inspired SPA
 // ══════════════════════════════════════════════════════════════════════════
+function getCSRFToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value || CEMS.getCookie('csrftoken');
+}
 let adminUser = null;
 let currentElectionDetail = null;
 let allElections = [];
@@ -1563,7 +1566,7 @@ async function uploadHybridRoster() {
         const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/hybrid/roster/import/`, {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd,
         });
         const res = await response.json();
@@ -1591,7 +1594,7 @@ async function uploadHybridTally() {
         const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/hybrid/tally/import/`, {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd,
         });
         const res = await response.json();
@@ -1830,7 +1833,7 @@ async function submitCreateCampus() {
     try {
         const response = await fetch('/api/admin/elections/setup/create-campus/', {
             method: 'POST', credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd,
         });
         const res = await response.json();
@@ -1877,7 +1880,7 @@ async function submitCreateCollege() {
     try {
         const response = await fetch('/api/admin/elections/setup/create-college/', {
             method: 'POST', credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd,
         });
         const res = await response.json();
@@ -1990,7 +1993,7 @@ async function submitPhotoUpload() {
     try {
         const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/candidates/${photoTargetId}/photo/`, {
             method: 'POST', credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd
         });
         const res = await response.json();
@@ -2029,7 +2032,7 @@ async function submitVoterRollCSV() {
     try {
         const response = await fetch(`/api/admin/elections/setup/${currentElectionDetail.id}/voter-roll/import/`, {
             method: 'POST', credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd
         });
         const res = await response.json();
@@ -2178,7 +2181,7 @@ async function submitBatchImport() {
     try {
         const response = await fetch(`/api/admin/elections/setup/registrar-batches/${importBatchId}/import/`, {
             method: 'POST', credentials: 'same-origin',
-            headers: { 'X-CSRFToken': CEMS.getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': getCSRFToken() },
             body: fd
         });
         const res = await response.json();

@@ -50,8 +50,8 @@ DJANGO_COLLECTSTATIC=1
 ### 4. Rebuild and restart
 
 ```bash
-docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml up -d --build
+sudo docker compose -f docker-compose.prod.yml down
+sudo docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 **Note:** `--build` is **required** for this deployment because dependency files (`requirements/base.txt`, `requirements/production.txt`) and settings (`config/settings/production.py`) were changed.
