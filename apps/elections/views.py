@@ -57,8 +57,8 @@ def _get_eligible_elections(student):
         if e.status not in (Election.Status.ACTIVE, Election.Status.PUBLISHED):
             continue
 
-        # College election: enforce college match
-        if e.is_college and e.college != student.college:
+        # College election: enforce college match (case-insensitive)
+        if e.is_college and e.college.strip().lower() != (student.college or "").strip().lower():
             continue
 
         elections.append(e)
@@ -76,7 +76,7 @@ def _check_student_eligible(student, election):
     ).exists():
         return False, "You are not on the approved voter roll for this election."
 
-    if election.is_college and election.college != student.college:
+    if election.is_college and election.college.strip().lower() != (student.college or "").strip().lower():
         return False, "You are not eligible for this college's election."
 
     return True, None

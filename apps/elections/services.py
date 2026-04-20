@@ -712,8 +712,8 @@ class VoterRollService:
             if student.pk in existing_student_ids:
                 continue
 
-            # For college elections, only include students from the matching college
-            if election.is_college and student.college != election.college:
+            # For college elections, only include students from the matching college (case-insensitive)
+            if election.is_college and (student.college or "").strip().lower() != election.college.strip().lower():
                 continue
 
             voters_to_create.append(EligibleVoter(
