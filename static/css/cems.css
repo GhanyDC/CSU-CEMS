@@ -872,7 +872,7 @@ footer {
 
 /* Per-candidate vote display */
 .cand-votes { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; margin-right: 0.5rem; }
-.cand-votes .vote-count { font-weight: 700; font-size: 0.9rem; color: var(--cems-primary); }
+.cand-votes .vote-count { font-weight: 700; font-size: 0.9rem; color: var(--cems-primary); margin-right: 0.35rem; }
 .cand-votes .vote-pct { font-size: 0.75rem; color: var(--cems-text-secondary); }
 
 .candidate-row {
