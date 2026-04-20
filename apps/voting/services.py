@@ -170,16 +170,6 @@ class BallotService:
                     f"candidate for position '{position.title}'."
                 )
 
-            # College representative: student can only vote for their own college
-            if position.category == Position.Category.HOUSE_COLLEGE:
-                student_college = (locked_student.college or "").strip().lower()
-                candidate_college = (candidate.college or "").strip().lower()
-                if student_college != candidate_college:
-                    raise InvalidSelectionError(
-                        f"You can only vote for the college representative "
-                        f"of your own college."
-                    )
-
             resolved_selections.append((position, candidate))
 
         # 7. Check for duplicate (position, candidate) pairs
