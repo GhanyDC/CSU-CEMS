@@ -79,4 +79,8 @@ urlpatterns = [
     path("<uuid:election_id>/export/tally/csv/", export_views.export_tally_csv, name="export-tally-csv"),
     path("<uuid:election_id>/export/participation/csv/", export_views.export_participation_csv, name="export-participation-csv"),
     path("<uuid:election_id>/export/ballot-audit/csv/", export_views.export_ballot_audit_csv, name="export-ballot-audit-csv"),
+
+    # Post-audit college-rep endpoints
+    path("<uuid:election_id>/audit/college-rep/", export_views.college_rep_audit_json, name="college-rep-audit-json"),
+    path("<uuid:election_id>/export/college-rep-audit/csv/", export_views.export_college_rep_audit_csv, name="export-college-rep-audit-csv"),
 ]

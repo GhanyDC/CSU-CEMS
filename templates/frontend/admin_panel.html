@@ -1029,8 +1029,33 @@ function renderOverview() {
                             <i class="bi bi-filetype-csv me-1"></i>Ballot Audit CSV
                         </button>
                     </div>` : ''}
+                    ${canExportTally ? `<div class="col-6 col-md-4">
+                        <button class="btn btn-cems-outline btn-sm w-100" onclick="exportFile('college-rep-audit','csv')">
+                            <i class="bi bi-filetype-csv me-1"></i>College Rep Audit CSV
+                        </button>
+                    </div>` : ''}
                 </div>
                 ${!canExportTally && (el.status === 'active') ? `<p class="text-muted mt-2 mb-0" style="font-size:0.8rem"><i class="bi bi-info-circle me-1"></i>Tally and participation exports become available after the election is closed.</p>` : ''}
+            </div>
+        </div>`;
+    }
+
+    // ── Post-Audit: College Representative Report ────────────────────────
+    if ((adminUser.is_eb_head || adminUser.is_read_only) && (el.status === 'closed' || el.status === 'published')) {
+        html += `<div class="cems-card mb-4" id="college-rep-audit-card">
+            <div class="cems-card-header d-flex align-items-center gap-2">
+                <i class="bi bi-shield-check" style="color:var(--cems-warning)"></i>
+                <span class="fw-semibold">Post-Audit: College Representative Valid Votes</span>
+            </div>
+            <div class="p-3">
+                <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" style="font-size:0.85rem">
+                    <i class="bi bi-info-circle-fill mt-1"></i>
+                    <span>This report shows <strong>validated votes only</strong>. Cross-college ballots are classified as invalid and excluded from valid counts. Original results are not modified.</span>
+                </div>
+                <button class="btn btn-cems-outline btn-sm" id="btn-generate-audit" onclick="generateCollegeRepAudit()">
+                    <i class="bi bi-clipboard-data me-1"></i>Generate Report
+                </button>
+                <div id="college-rep-audit-results" class="mt-3"></div>
             </div>
         </div>`;
     }
@@ -1084,6 +1109,96 @@ async function exportTurnoutText() {
             CEMS.showToast(res.error || 'Failed to generate turnout text.', 'danger');
         }
     } catch (err) { CEMS.showToast('Error: ' + err.message, 'danger'); }
+}
+
+// ── Post-Audit: College Representative report ────────────────────────────
+async function generateCollegeRepAudit() {
+    const btn = document.getElementById('btn-generate-audit');
+    const container = document.getElementById('college-rep-audit-results');
+    if (!btn || !container) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating\u2026';
+    container.innerHTML = '';
+
+    try {
+        const eid = currentElectionDetail.id;
+        const res = await CEMS.api(`/api/admin/elections/setup/${eid}/audit/college-rep/`);
+        if (!res.success) {
+            container.innerHTML = `<div class="alert alert-danger">${esc(res.error || 'Failed to generate report.')}</div>`;
+            return;
+        }
+        const report = res.report;
+        if (!report.length) {
+            container.innerHTML = '<div class="alert alert-info">No College Representative positions found for this election.</div>';
+            return;
+        }
+
+        let grandReg = 0, grandRaw = 0, grandValid = 0, grandInvalid = 0, grandUnmatched = 0;
+        let html = '';
+
+        for (const seat of report) {
+            grandReg += seat.registered_voters;
+            grandRaw += seat.total_raw_votes;
+            grandValid += seat.total_valid_votes;
+            grandInvalid += seat.total_invalid_votes;
+            grandUnmatched += seat.unmatched_ballots;
+
+            html += `<div class="border rounded mb-3">
+                <div class="p-2 px-3 d-flex justify-content-between align-items-center" style="background:var(--cems-bg-muted);cursor:pointer" onclick="this.nextElementSibling.classList.toggle('d-none')">
+                    <span class="fw-semibold" style="font-size:0.9rem">${esc(seat.position_title)}</span>
+                    <span class="badge" style="background:var(--cems-primary-bg);color:var(--cems-primary);font-size:0.75rem">${seat.total_valid_votes} valid / ${seat.total_raw_votes} raw</span>
+                </div>
+                <div class="p-3">
+                    <div class="row g-2 mb-2" style="font-size:0.8rem">
+                        <div class="col-auto"><strong>College:</strong> ${esc(seat.allowed_college)}</div>
+                        <div class="col-auto"><strong>Registered:</strong> ${seat.registered_voters}</div>
+                        <div class="col-auto"><strong>Turnout:</strong> ${seat.valid_turnout_pct}%</div>
+                        ${seat.unmatched_ballots ? `<div class="col-auto text-warning"><strong>Unmatched:</strong> ${seat.unmatched_ballots}</div>` : ''}
+                    </div>
+                    <table class="table table-sm table-bordered mb-0" style="font-size:0.82rem">
+                        <thead><tr style="background:var(--cems-bg-muted)">
+                            <th>Candidate</th><th class="text-end" style="width:70px">Raw</th>
+                            <th class="text-end" style="width:70px">Valid</th><th class="text-end" style="width:70px">Invalid</th>
+                        </tr></thead>
+                        <tbody>`;
+            for (const c of seat.candidates) {
+                html += `<tr>
+                    <td>${esc(c.name)}</td>
+                    <td class="text-end">${c.raw_votes}</td>
+                    <td class="text-end fw-semibold" style="color:var(--cems-success)">${c.valid_votes}</td>
+                    <td class="text-end" style="color:var(--cems-danger)">${c.invalid_votes}</td>
+                </tr>`;
+            }
+            html += `<tr style="background:var(--cems-bg-muted);font-weight:600">
+                    <td>TOTALS</td>
+                    <td class="text-end">${seat.total_raw_votes}</td>
+                    <td class="text-end" style="color:var(--cems-success)">${seat.total_valid_votes}</td>
+                    <td class="text-end" style="color:var(--cems-danger)">${seat.total_invalid_votes}</td>
+                </tr></tbody></table>
+                </div>
+            </div>`;
+        }
+
+        // Grand totals
+        html += `<div class="border rounded p-3" style="background:var(--cems-bg-muted)">
+            <div class="fw-semibold mb-2" style="font-size:0.9rem">Grand Totals — All College Rep Seats</div>
+            <div class="row g-3" style="font-size:0.85rem">
+                <div class="col-auto"><strong>Registered:</strong> ${grandReg}</div>
+                <div class="col-auto"><strong>Raw:</strong> ${grandRaw}</div>
+                <div class="col-auto" style="color:var(--cems-success)"><strong>Valid:</strong> ${grandValid}</div>
+                <div class="col-auto" style="color:var(--cems-danger)"><strong>Invalid:</strong> ${grandInvalid}</div>
+                ${grandUnmatched ? `<div class="col-auto text-warning"><strong>Unmatched:</strong> ${grandUnmatched}</div>` : ''}
+            </div>
+        </div>`;
+
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="alert alert-danger">Error: ${esc(err.message)}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-clipboard-data me-1"></i>Generate Report';
+    }
 }
 
 async function loadReadiness(electionId) {

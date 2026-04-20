@@ -1,55 +1,20 @@
 """
 Read-only audit command: report valid votes per College Representative seat.
 
-Reconstructs ballot ownership via SHA-256 hashes, compares each voter's
-college_snapshot against the allowed college inferred from the position title,
-and reports raw / valid / invalid vote counts plus turnout per seat.
+Delegates computation to ``CollegeRepAuditService`` and renders the result
+in table, CSV, or JSON format.
 
 NO DATA IS MODIFIED BY THIS COMMAND.
 """
 
 import csv
-import json
 import io
-import re
-import sys
-from collections import defaultdict
+import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.elections.models import Election, EligibleVoter, Position, Candidate
-from apps.voting.models import Ballot, BallotSelection
-
-
-# ── Normalisation ────────────────────────────────────────────────────────────
-
-_DASH_RE = re.compile(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u002D\uFE58\uFE63\uFF0D]+")
-
-
-def _normalize_college(name: str) -> str:
-    """
-    Lowercase, strip, collapse dashes, and remove a leading 'college of '
-    prefix so that two college names can be compared safely.
-    """
-    s = name.strip().lower()
-    s = _DASH_RE.sub("-", s)
-    if s.startswith("college of "):
-        s = s[len("college of "):]
-    return s
-
-
-def _extract_college_from_title(title: str) -> str | None:
-    """
-    Given a position title like
-        'College Representative – Humanities and Social Sciences'
-    return the part after the em-dash separator.
-    Tries em-dash first, then en-dash, then plain hyphen.
-    Returns None if no separator found.
-    """
-    for sep in (" \u2013 ", " \u2014 ", " - "):
-        if sep in title:
-            return title.split(sep, 1)[1].strip()
-    return None
+from apps.elections.audit_services import CollegeRepAuditService
+from apps.elections.models import Election
 
 
 # ── Command ──────────────────────────────────────────────────────────────────
@@ -80,10 +45,17 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         election = self._load_election(options["election_id"])
-        positions = self._load_college_rep_positions(election)
-        hash_to_voter = self._build_hash_to_voter(election)
 
-        report = self._build_report(election, positions, hash_to_voter)
+        positions = CollegeRepAuditService.get_college_rep_positions(election)
+        if not positions:
+            raise CommandError(
+                "No College Representative (house_college) positions found "
+                "for this election."
+            )
+
+        report = CollegeRepAuditService.compute_college_rep_audit(
+            election, positions=positions,
+        )
 
         fmt = options["output_format"]
         if fmt == "table":
@@ -93,7 +65,7 @@ class Command(BaseCommand):
         elif fmt == "json":
             self._render_json(report)
 
-    # ── Data loading (read-only) ─────────────────────────────────────────────
+    # ── Data loading ─────────────────────────────────────────────────────────
 
     def _load_election(self, election_id: str) -> Election:
         try:
@@ -109,141 +81,6 @@ class Command(BaseCommand):
                 )
             )
         return election
-
-    def _load_college_rep_positions(self, election: Election) -> list[Position]:
-        positions = list(
-            Position.objects.filter(
-                election=election,
-                category=Position.Category.HOUSE_COLLEGE,
-            ).order_by("order", "title")
-        )
-        if not positions:
-            raise CommandError(
-                "No College Representative (house_college) positions found "
-                "for this election."
-            )
-        return positions
-
-    def _build_hash_to_voter(self, election: Election) -> dict[str, EligibleVoter]:
-        """
-        For every eligible voter in this election, compute the salted SHA-256
-        hash and return a dict  {hash_hex: EligibleVoter}.
-        """
-        voters = (
-            EligibleVoter.objects
-            .filter(election=election)
-            .select_related("student")
-        )
-        mapping: dict[str, EligibleVoter] = {}
-        election_pk_str = str(election.pk)
-        for ev in voters.iterator(chunk_size=2000):
-            h = Ballot.hash_student_id(ev.student.student_id, election_pk_str)
-            mapping[h] = ev
-        return mapping
-
-    # ── Audit logic ──────────────────────────────────────────────────────────
-
-    def _build_report(self, election, positions, hash_to_voter):
-        """Return a list of seat-report dicts, one per college-rep position."""
-        # Pre-count registered voters per normalised college
-        college_voter_counts: dict[str, int] = defaultdict(int)
-        college_display: dict[str, str] = {}
-        for ev in hash_to_voter.values():
-            norm = _normalize_college(ev.college_snapshot)
-            college_voter_counts[norm] += 1
-            college_display[norm] = ev.college_snapshot  # keep last seen display
-
-        report: list[dict] = []
-
-        for pos in positions:
-            raw_college = _extract_college_from_title(pos.title)
-            if raw_college is None:
-                self.stderr.write(
-                    self.style.WARNING(
-                        f"Could not parse college from position title: "
-                        f"'{pos.title}' — skipping."
-                    )
-                )
-                continue
-
-            norm_allowed = _normalize_college(raw_college)
-            display_college = college_display.get(
-                norm_allowed, f"College of {raw_college}"
-            )
-            registered = college_voter_counts.get(norm_allowed, 0)
-
-            # Fetch all BallotSelections for this position
-            selections = (
-                BallotSelection.objects
-                .filter(position=pos)
-                .select_related("ballot", "candidate")
-            )
-
-            # Per-candidate accumulators
-            cand_raw: dict[str, int] = defaultdict(int)
-            cand_valid: dict[str, int] = defaultdict(int)
-            cand_invalid: dict[str, int] = defaultdict(int)
-            cand_names: dict[str, str] = {}
-
-            total_raw = 0
-            total_valid = 0
-            total_invalid = 0
-            unmatched = 0
-
-            for sel in selections.iterator(chunk_size=2000):
-                cid = str(sel.candidate_id)
-                cand_names[cid] = sel.candidate.full_name
-                cand_raw[cid] += 1
-                total_raw += 1
-
-                voter = hash_to_voter.get(sel.ballot.hashed_student_id)
-                if voter is None:
-                    unmatched += 1
-                    # Count as raw but not valid
-                    cand_invalid[cid] += 1
-                    total_invalid += 1
-                    continue
-
-                voter_norm = _normalize_college(voter.college_snapshot)
-                if voter_norm == norm_allowed:
-                    cand_valid[cid] += 1
-                    total_valid += 1
-                else:
-                    cand_invalid[cid] += 1
-                    total_invalid += 1
-
-            turnout = (
-                (total_valid / registered * 100) if registered > 0 else 0.0
-            )
-
-            # Build candidate rows sorted by valid desc
-            candidates = []
-            for cid, name in sorted(
-                cand_names.items(), key=lambda kv: cand_valid.get(kv[0], 0), reverse=True
-            ):
-                candidates.append({
-                    "name": name,
-                    "raw_votes": cand_raw[cid],
-                    "valid_votes": cand_valid[cid],
-                    "invalid_votes": cand_invalid[cid],
-                })
-
-            report.append({
-                "election_id": str(election.pk),
-                "election_name": election.name,
-                "position_id": str(pos.pk),
-                "position_title": pos.title,
-                "allowed_college": display_college,
-                "registered_voters": registered,
-                "total_raw_votes": total_raw,
-                "total_valid_votes": total_valid,
-                "total_invalid_votes": total_invalid,
-                "unmatched_ballots": unmatched,
-                "valid_turnout_pct": round(turnout, 2),
-                "candidates": candidates,
-            })
-
-        return report
 
     # ── Renderers ────────────────────────────────────────────────────────────
 

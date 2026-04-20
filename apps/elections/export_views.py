@@ -25,6 +25,7 @@ from apps.elections.models import (
     EligibleVoter,
     Position,
 )
+from apps.elections.audit_services import CollegeRepAuditService
 from apps.elections.services import ResultService, TurnoutService
 from apps.voting.models import Ballot, BallotSelection
 
@@ -485,4 +486,126 @@ def export_ballot_audit_csv(request, election_id):
             ])
 
     _log_export(request, election, "ballot_audit_csv")
+    return response
+
+
+# ---------------------------------------------------------------------------
+# 4. College Representative Post-Audit Report
+# ---------------------------------------------------------------------------
+
+@require_GET
+@admin_login_required
+@role_required(
+    AdminRole.ELECTORAL_BOARD_HEAD,
+    AdminRole.TALLY_WATCHER,
+)
+def college_rep_audit_json(request, election_id):
+    """
+    GET /api/admin/elections/setup/<election_id>/audit/college-rep/
+
+    Return the post-audit college-rep valid-vote report as JSON.
+    Read-only — no data is modified.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status not in (Election.Status.CLOSED, Election.Status.PUBLISHED):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "College-rep audit is only available after the election is closed.",
+            },
+            status=403,
+        )
+
+    positions = CollegeRepAuditService.get_college_rep_positions(election)
+    if not positions:
+        return JsonResponse(
+            {
+                "success": True,
+                "report": [],
+                "message": "No College Representative positions found.",
+            }
+        )
+
+    report = CollegeRepAuditService.compute_college_rep_audit(
+        election, positions=positions,
+    )
+
+    _log_export(request, election, "college_rep_audit_json")
+    return JsonResponse({"success": True, "report": report})
+
+
+@require_GET
+@admin_login_required
+@role_required(
+    AdminRole.ELECTORAL_BOARD_HEAD,
+    AdminRole.TALLY_WATCHER,
+)
+def export_college_rep_audit_csv(request, election_id):
+    """
+    GET /api/admin/elections/setup/<election_id>/export/college-rep-audit/csv/
+
+    Export the post-audit college-rep valid-vote report as CSV.
+    Read-only — no data is modified.
+    """
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+
+    if election.status not in (Election.Status.CLOSED, Election.Status.PUBLISHED):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "College-rep audit export is only available after the election is closed.",
+            },
+            status=403,
+        )
+
+    report = CollegeRepAuditService.compute_college_rep_audit(election)
+    now = timezone.now()
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="college_rep_audit_{election.pk}'
+        f'_{now.strftime("%Y%m%d_%H%M%S")}.csv"'
+    )
+    writer = csv.writer(response)
+
+    writer.writerow(["Post-Audit: College Representative Valid Votes"])
+    writer.writerow(["Election", election.name])
+    writer.writerow([f"Generated: {now.strftime('%Y-%m-%d %H:%M:%S')}"])
+    writer.writerow([
+        "NOTE: Valid votes exclude cross-college ballots. "
+        "This report does not modify any data."
+    ])
+    writer.writerow([])
+    writer.writerow([
+        "Position Title",
+        "Allowed College",
+        "Candidate",
+        "Registered Voters",
+        "Raw Votes",
+        "Valid Votes",
+        "Invalid Votes",
+        "Valid Turnout %",
+        "Unmatched Ballots",
+    ])
+
+    for seat in report:
+        for c in seat["candidates"]:
+            writer.writerow([
+                seat["position_title"],
+                seat["allowed_college"],
+                c["name"],
+                seat["registered_voters"],
+                c["raw_votes"],
+                c["valid_votes"],
+                c["invalid_votes"],
+                seat["valid_turnout_pct"],
+                seat["unmatched_ballots"],
+            ])
+
+    _log_export(request, election, "college_rep_audit_csv")
     return response
