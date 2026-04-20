@@ -1583,12 +1583,14 @@ footer {
     background: rgba(0, 0, 0, 0.45);
     z-index: 1038;
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.3s ease;
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
 }
 .cems-sidebar-overlay.open {
     opacity: 1;
+    pointer-events: auto;
 }
 
 /* ---------- Responsive: < 992px (Tablet/Mobile) ---------- */

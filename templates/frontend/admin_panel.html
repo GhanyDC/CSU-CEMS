@@ -267,8 +267,8 @@
                         <input type="text" class="form-control" id="candidate-party">
                     </div>
                     <div class="col-6">
-                        <label class="form-label fw-semibold small">College <span class="text-muted fw-normal">(optional)</span></label>
-                        <input type="text" class="form-control" id="candidate-college" placeholder="e.g. COE, CEBA">
+                        <label class="form-label fw-semibold small">College <span class="text-muted fw-normal">(required for college reps)</span></label>
+                        <input type="text" class="form-control" id="candidate-college" placeholder="e.g. College of Information and Computing Sciences">
                     </div>
                 </div>
                 <div class="mb-0">
@@ -1971,8 +1971,25 @@ function showAddCandidateModal(posId) {
     }
     document.getElementById('candidate-name').value = '';
     document.getElementById('candidate-party').value = '';
-    document.getElementById('candidate-college').value = '';
     document.getElementById('candidate-platform').value = '';
+
+    // Auto-populate college for HOUSE_COLLEGE positions
+    const collegeInput = document.getElementById('candidate-college');
+    collegeInput.value = '';
+    collegeInput.readOnly = false;
+    if (posId) {
+        const pos = currentElectionDetail.positions.find(p => p.id === posId);
+        if (pos && pos.category === 'house_college') {
+            // Extract official college name: "College Representative – XYZ" → "College of XYZ"
+            const dashIdx = pos.title.indexOf('–');
+            if (dashIdx !== -1) {
+                const shortName = pos.title.substring(dashIdx + 1).trim();
+                collegeInput.value = 'College of ' + shortName;
+                collegeInput.readOnly = true;
+            }
+        }
+    }
+
     new bootstrap.Modal(document.getElementById('addCandidateModal')).show();
 }
 async function submitAddCandidate() {
