@@ -191,14 +191,6 @@ def election_ballot(request, election_id):
             .order_by("full_name")
         )
 
-        # CRITICAL FIX: For house_college positions in campus elections,
-        # only show candidates from the student's own college
-        if pos.category == Position.Category.HOUSE_COLLEGE and election.is_campus:
-            candidates_qs = candidates_qs.filter(college__iexact=(student.college or "").strip())
-            # Skip position entirely if no candidates for this student's college
-            if not candidates_qs.exists():
-                continue
-
         candidates = list(candidates_qs)
 
         positions_data.append({
@@ -271,12 +263,6 @@ def current_election(request):
             .filter(position=pos, is_active=True)
             .order_by("full_name")
         )
-
-        # College representative filtering for campus elections
-        if pos.category == Position.Category.HOUSE_COLLEGE and election.is_campus:
-            candidates_qs = candidates_qs.filter(college__iexact=(student.college or "").strip())
-            if not candidates_qs.exists():
-                continue
 
         candidates = list(candidates_qs)
 
