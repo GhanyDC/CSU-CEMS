@@ -11,6 +11,10 @@ from apps.accounts.models import Student
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 from apps.elections.models import Candidate, Election, EligibleVoter, Position
+from apps.elections.scope import (
+    candidate_selectable_by_voter,
+    election_matches_voter_college,
+)
 from apps.voting.models import Ballot, BallotSelection
 
 logger = logging.getLogger("cems.application")
@@ -74,11 +78,17 @@ class BallotService:
             )
 
         # 1b. Validate student is on the approved voter roll
-        if not EligibleVoter.objects.filter(
+        eligible_voter = EligibleVoter.objects.filter(
             election=election, student=student
-        ).exists():
+        ).only("college_snapshot").first()
+        if eligible_voter is None:
             raise VoterNotEligibleError(
                 "You are not on the approved voter roll for this election."
+            )
+        voter_college = eligible_voter.college_snapshot or student.college or ""
+        if not election_matches_voter_college(election, voter_college):
+            raise VoterNotEligibleError(
+                "You are not eligible for this college's election."
             )
 
         # 2. Validate selections list is non-empty
@@ -88,6 +98,7 @@ class BallotService:
         try:
             return BallotService._cast_ballot_atomic(
                 student, election, selections,
+                voter_college=voter_college,
                 ip_address=ip_address, user_agent=user_agent,
             )
         except BallotAlreadyCastError:
@@ -101,6 +112,19 @@ class BallotService:
                 details=f"Duplicate ballot attempt for election {election.pk}.",
             )
             raise
+        except InvalidSelectionError as exc:
+            AuditService.log_event(
+                student_id_attempted=student.student_id,
+                event_type=AuditLog.EventType.SUSPICIOUS_ACTIVITY,
+                success=False,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                details=(
+                    f"Invalid ballot selection attempt for election "
+                    f"{election.pk}: {exc}"
+                ),
+            )
+            raise
 
     @staticmethod
     @transaction.atomic
@@ -109,6 +133,7 @@ class BallotService:
         election: Election,
         selections: list[tuple[str, str]],
         *,
+        voter_college: str,
         ip_address: str | None = None,
         user_agent: str = "",
     ) -> Ballot:
@@ -168,6 +193,17 @@ class BallotService:
                 raise InvalidSelectionError(
                     f"Candidate '{candidate_id}' is not a valid active "
                     f"candidate for position '{position.title}'."
+                )
+
+            if not candidate_selectable_by_voter(
+                election,
+                position,
+                candidate,
+                voter_college,
+            ):
+                raise InvalidSelectionError(
+                    f"Candidate '{candidate_id}' is not eligible for your "
+                    f"college in position '{position.title}'."
                 )
 
             resolved_selections.append((position, candidate))

@@ -64,6 +64,18 @@ urlpatterns = [
     path("registrar-batches/<uuid:batch_id>/delete/", admin_views.delete_registrar_batch, name="registrar-batch-delete"),
     path("<uuid:election_id>/registrar-batch/assign/", admin_views.assign_registrar_batch, name="registrar-batch-assign"),
 
+    # School-year roster and web registration
+    path("school-years/", admin_views.list_school_years, name="school-years"),
+    path("school-years/create/", admin_views.create_school_year, name="school-year-create"),
+    path("school-years/<uuid:school_year_id>/activate/", admin_views.activate_school_year, name="school-year-activate"),
+    path("school-years/<uuid:school_year_id>/archive/", admin_views.archive_school_year, name="school-year-archive"),
+    path("school-years/<uuid:school_year_id>/enrollments/", admin_views.list_enrollments, name="school-year-enrollments"),
+    path("school-years/<uuid:school_year_id>/enrollments/create/", admin_views.create_enrollment, name="enrollment-create"),
+    path("enrollments/<uuid:enrollment_id>/update/", admin_views.update_enrollment, name="enrollment-update"),
+    path("enrollments/<uuid:enrollment_id>/deactivate/", admin_views.deactivate_enrollment, name="enrollment-deactivate"),
+    path("<uuid:election_id>/registration/settings/", admin_views.update_registration_settings, name="registration-settings"),
+    path("<uuid:election_id>/registration/summary/", admin_views.registration_summary, name="registration-summary"),
+
     # Readiness check
     path("<uuid:election_id>/readiness/", admin_views.readiness_check, name="readiness"),
 

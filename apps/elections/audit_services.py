@@ -12,6 +12,7 @@ import re
 from collections import defaultdict
 
 from apps.elections.models import Election, EligibleVoter, Position
+from apps.elections.scope import resolve_position_scope_college
 from apps.voting.models import Ballot, BallotSelection
 
 
@@ -123,10 +124,10 @@ class CollegeRepAuditService:
         warnings: list[str] = []
 
         for pos in positions:
-            raw_college = extract_college_from_title(pos.title)
-            if raw_college is None:
+            raw_college = resolve_position_scope_college(pos)
+            if not raw_college:
                 warnings.append(
-                    f"Could not parse college from position title: '{pos.title}'"
+                    f"Could not resolve college scope for position: '{pos.title}'"
                 )
                 continue
 

@@ -13,10 +13,18 @@ from django.utils import timezone
 from apps.elections.constants import OFFICIAL_COLLEGES
 from apps.elections.models import (
     Candidate,
+    EnrollmentRecord,
     Election,
     EligibleVoter,
     Position,
+    SchoolYear,
+    VoterRegistration,
     VerificationRecord,
+)
+from apps.elections.scope import (
+    college_matches,
+    resolve_official_college,
+    resolve_position_scope_college,
 )
 
 logger = logging.getLogger("cems.application")
@@ -97,6 +105,7 @@ class ElectionSetupService:
                 election=election,
                 title=f"College Representative – {short_name}",
                 category=Position.Category.HOUSE_COLLEGE,
+                scope_college=college,
                 max_selections=1,
                 order=order,
             )
@@ -190,6 +199,51 @@ class ElectionSetupService:
         election.save(update_fields=["voting_mode", "updated_at"])
         return election
 
+    @staticmethod
+    @transaction.atomic
+    def update_draft_election_registration_settings(
+        election: Election,
+        *,
+        school_year: SchoolYear | None = None,
+        registration_enabled: bool | None = None,
+        registration_closes_at=None,
+        clear_registration_closes_at: bool = False,
+    ) -> Election:
+        """Update web-registration settings while the election is still draft."""
+        if election.status != Election.Status.DRAFT:
+            raise ElectionSetupError(
+                "Registration settings can only be changed while the election is in Draft status."
+            )
+        if election.is_voter_roll_finalized:
+            raise ElectionSetupError(
+                "Registration settings cannot be changed after voter roll finalization."
+            )
+
+        update_fields = []
+        if school_year is not None:
+            if school_year.status != SchoolYear.Status.ACTIVE:
+                raise ElectionSetupError("Only an active school year can be linked for registration.")
+            election.school_year = school_year
+            update_fields.append("school_year")
+
+        if registration_enabled is not None:
+            if registration_enabled and not (school_year or election.school_year_id):
+                raise ElectionSetupError("A school year is required before registration can be enabled.")
+            election.registration_enabled = bool(registration_enabled)
+            update_fields.append("registration_enabled")
+
+        if clear_registration_closes_at:
+            election.registration_closes_at = None
+            update_fields.append("registration_closes_at")
+        elif registration_closes_at is not None:
+            election.registration_closes_at = registration_closes_at
+            update_fields.append("registration_closes_at")
+
+        if update_fields:
+            update_fields.append("updated_at")
+            election.save(update_fields=update_fields)
+        return election
+
 
 # ---------------------------------------------------------------------------
 # Candidate Management Service
@@ -230,11 +284,23 @@ class CandidateManagementService:
                 f"A candidate named '{full_name.strip()}' already exists for this position."
             )
 
+        candidate_college = college.strip() if college else ""
+        if position.category == Position.Category.HOUSE_COLLEGE and position.election.is_campus:
+            scope_college = resolve_position_scope_college(position)
+            if not scope_college:
+                raise ElectionSetupError(
+                    "This College Representative position has no represented college."
+                )
+            if not college_matches(candidate_college, scope_college):
+                raise ElectionSetupError(
+                    f"Candidate college must match the represented college: {scope_college}."
+                )
+
         candidate = Candidate.objects.create(
             position=position,
             full_name=full_name.strip(),
             party=party.strip() if party else "",
-            college=college.strip() if college else "",
+            college=candidate_college,
             is_active=True,
         )
 
@@ -281,10 +347,30 @@ class CandidateManagementService:
             update_fields.append("party")
 
         if college is not None:
-            candidate.college = college.strip()
+            candidate_college = college.strip()
+            if (
+                candidate.position.category == Position.Category.HOUSE_COLLEGE
+                and candidate.position.election.is_campus
+            ):
+                scope_college = resolve_position_scope_college(candidate.position)
+                if not college_matches(candidate_college, scope_college):
+                    raise ElectionSetupError(
+                        f"Candidate college must match the represented college: {scope_college}."
+                    )
+            candidate.college = candidate_college
             update_fields.append("college")
 
         if is_active is not None:
+            if (
+                is_active
+                and candidate.position.category == Position.Category.HOUSE_COLLEGE
+                and candidate.position.election.is_campus
+            ):
+                scope_college = resolve_position_scope_college(candidate.position)
+                if not college_matches(candidate.college, scope_college):
+                    raise ElectionSetupError(
+                        f"Candidate college must match the represented college: {scope_college}."
+                    )
             candidate.is_active = is_active
             update_fields.append("is_active")
 
@@ -388,15 +474,23 @@ class ReadinessService:
                 f"{len(positions_without_candidates)} position(s) have no active candidates."
             )
 
-        # 4. Verification records imported
+        # 4. Eligible voter source exists
         import_count = VerificationRecord.objects.filter(election=election).count()
+        registration_count = VoterRegistration.objects.filter(
+            election=election,
+            status=VoterRegistration.Status.APPROVED,
+        ).count()
+        has_accepted_voter_source = import_count > 0 or registration_count > 0
         checks.append({
-            "name": "Verification records imported",
-            "passed": import_count > 0,
-            "detail": f"{import_count} record(s) imported",
+            "name": "Eligible voter source exists",
+            "passed": has_accepted_voter_source,
+            "detail": (
+                f"{import_count} verification record(s), "
+                f"{registration_count} approved web registration(s)"
+            ),
         })
-        if import_count == 0:
-            blocking.append("No verification records imported.")
+        if not has_accepted_voter_source:
+            blocking.append("No accepted voter source found.")
 
         # 5. Voter roll generated
         voter_count = EligibleVoter.objects.filter(election=election).count()
@@ -408,7 +502,142 @@ class ReadinessService:
         if voter_count == 0:
             blocking.append("Voter roll has not been generated.")
 
-        # 6. Voter roll finalized
+        # 6. Registration school-year configuration is usable
+        registration_config_ok = True
+        registration_config_detail = "Not applicable"
+        if election.registration_enabled:
+            registration_config_ok = bool(election.school_year_id)
+            registration_config_detail = (
+                f"Linked to {election.school_year.name}"
+                if election.school_year_id
+                else "Registration is enabled but no school year is linked"
+            )
+        checks.append({
+            "name": "Registration school year configured",
+            "passed": registration_config_ok,
+            "detail": registration_config_detail,
+        })
+        if not registration_config_ok:
+            blocking.append("Web registration requires a linked school year.")
+
+        # 7. School-year voter roll is consistent
+        school_year_scope_ok = True
+        school_year_scope_detail = "Not applicable"
+        if election.school_year_id and voter_count > 0:
+            invalid_enrollments = []
+            enrollments = {
+                enrollment.student_identifier: enrollment
+                for enrollment in EnrollmentRecord.objects.filter(
+                    school_year=election.school_year,
+                    status=EnrollmentRecord.Status.ACTIVE,
+                )
+            }
+            for ev in (
+                EligibleVoter.objects
+                .filter(election=election)
+                .select_related("student")
+            ):
+                enrollment = enrollments.get(ev.student.student_id)
+                if enrollment is None:
+                    invalid_enrollments.append(ev.student.student_id)
+                    continue
+                if not college_matches(ev.college_snapshot, enrollment.college):
+                    invalid_enrollments.append(ev.student.student_id)
+
+            school_year_scope_ok = not invalid_enrollments
+            school_year_scope_detail = (
+                "All eligible voters have active school-year enrollment"
+                if school_year_scope_ok
+                else (
+                    f"{len(invalid_enrollments)} eligible voter(s) lack matching "
+                    "active enrollment."
+                )
+            )
+        elif election.school_year_id:
+            school_year_scope_detail = "No voter roll to check"
+
+        checks.append({
+            "name": "School-year enrollment scoped correctly",
+            "passed": school_year_scope_ok,
+            "detail": school_year_scope_detail,
+        })
+        if not school_year_scope_ok:
+            blocking.append("Voter roll contains voters outside the linked school-year enrollment.")
+
+        # 8. College-scoped voter roll is consistent
+        voter_roll_scope_ok = True
+        voter_roll_scope_detail = "Not applicable"
+        if election.is_college and voter_count > 0:
+            mismatched_voters = [
+                ev.student.student_id
+                for ev in (
+                    EligibleVoter.objects
+                    .filter(election=election)
+                    .select_related("student")
+                )
+                if not college_matches(ev.college_snapshot, election.college)
+            ]
+            voter_roll_scope_ok = not mismatched_voters
+            voter_roll_scope_detail = (
+                "All eligible voters match this college"
+                if voter_roll_scope_ok
+                else (
+                    f"{len(mismatched_voters)} voter(s) do not match "
+                    f"{election.college}."
+                )
+            )
+        elif election.is_college:
+            voter_roll_scope_detail = "No voter roll to check"
+
+        checks.append({
+            "name": "College voter roll scoped correctly",
+            "passed": voter_roll_scope_ok,
+            "detail": voter_roll_scope_detail,
+        })
+        if not voter_roll_scope_ok:
+            blocking.append("College election voter roll contains out-of-college voters.")
+
+        # 9. Campus college-rep seats are scoped correctly
+        college_rep_scope_ok = True
+        college_rep_issues = []
+        if election.is_campus:
+            for pos in Position.objects.filter(
+                election=election,
+                category=Position.Category.HOUSE_COLLEGE,
+            ):
+                scope_college = resolve_position_scope_college(pos)
+                if not scope_college:
+                    college_rep_scope_ok = False
+                    college_rep_issues.append(f"{pos.title}: missing represented college")
+                    continue
+
+                mismatched_candidates = [
+                    c.full_name
+                    for c in Candidate.objects.filter(position=pos, is_active=True)
+                    if not college_matches(c.college, scope_college)
+                ]
+                if mismatched_candidates:
+                    college_rep_scope_ok = False
+                    names = ", ".join(mismatched_candidates[:3])
+                    if len(mismatched_candidates) > 3:
+                        names += f" (+{len(mismatched_candidates) - 3} more)"
+                    college_rep_issues.append(
+                        f"{pos.title}: candidate college mismatch ({names})"
+                    )
+
+        checks.append({
+            "name": "College representative scopes valid",
+            "passed": college_rep_scope_ok,
+            "detail": (
+                "All college-rep seats are scoped correctly"
+                if college_rep_scope_ok
+                else "; ".join(college_rep_issues[:3])
+            ),
+        })
+        if not college_rep_scope_ok:
+            blocking.append("Campus college-rep positions or candidates are mis-scoped.")
+
+        # 10. Voter roll finalized
         checks.append({
             "name": "Voter roll finalized",
             "passed": election.is_voter_roll_finalized,
@@ -422,7 +651,7 @@ class ReadinessService:
         if not election.is_voter_roll_finalized:
             blocking.append("Voter roll has not been finalized.")
 
-        # 7. Election is in DRAFT
+        # 11. Election is in DRAFT
         is_draft = election.status == Election.Status.DRAFT
         checks.append({
             "name": "Election is in Draft",
@@ -473,6 +702,7 @@ class PositionManagementService:
         category: str,
         max_selections: int = 1,
         order: int = 0,
+        scope_college: str = "",
     ) -> "Position":
         """Create a new position for the election. Election must be in DRAFT."""
         PositionManagementService._require_draft(election)
@@ -492,10 +722,19 @@ class PositionManagementService:
                 f"A position titled '{title}' already exists in this election."
             )
 
+        resolved_scope_college = ""
+        if category == Position.Category.HOUSE_COLLEGE and election.is_campus:
+            resolved_scope_college = resolve_official_college(scope_college)
+            if not resolved_scope_college:
+                raise ElectionSetupError(
+                    "scope_college is required for campus College Representative positions."
+                )
+
         position = Position.objects.create(
             election=election,
             title=title,
             category=category,
+            scope_college=resolved_scope_college,
             max_selections=max_selections,
             order=order,
         )
@@ -513,6 +752,7 @@ class PositionManagementService:
         category: str | None = None,
         max_selections: int | None = None,
         order: int | None = None,
+        scope_college: str | None = None,
     ) -> "Position":
         """Update a position's fields. Election must be in DRAFT."""
         PositionManagementService._require_draft(position.election)
@@ -540,6 +780,8 @@ class PositionManagementService:
             position.category = category
             update_fields.append("category")
 
+        effective_category = position.category
+
         if max_selections is not None:
             if not isinstance(max_selections, int) or max_selections < 1:
                 raise ElectionSetupError("max_selections must be a positive integer.")
@@ -549,6 +791,20 @@ class PositionManagementService:
         if order is not None:
             position.order = order
             update_fields.append("order")
+
+        if scope_college is not None:
+            position.scope_college = resolve_official_college(scope_college)
+            update_fields.append("scope_college")
+
+        if effective_category == Position.Category.HOUSE_COLLEGE and position.election.is_campus:
+            if not position.scope_college:
+                raise ElectionSetupError(
+                    "scope_college is required for campus College Representative positions."
+                )
+        elif position.scope_college:
+            position.scope_college = ""
+            if "scope_college" not in update_fields:
+                update_fields.append("scope_college")
 
         if update_fields:
             position.save(update_fields=update_fields)

@@ -5,10 +5,13 @@ from apps.elections.models import (
     Candidate,
     Election,
     EligibleVoter,
+    EnrollmentRecord,
     HybridImportBatch,
     OnsiteParticipation,
     OnsiteTally,
     Position,
+    SchoolYear,
+    VoterRegistration,
     VerificationRecord,
 )
 
@@ -18,7 +21,7 @@ class PositionInline(admin.TabularInline):
 
     model = Position
     extra = 1
-    fields = ("title", "category", "max_selections", "order")
+    fields = ("title", "category", "scope_college", "max_selections", "order")
     ordering = ("order",)
 
 
@@ -32,8 +35,8 @@ class CandidateInline(admin.TabularInline):
 
 @admin.register(Election)
 class ElectionAdmin(admin.ModelAdmin):
-    list_display = ("name", "election_type", "voting_mode", "college", "status", "start_time", "end_time", "voter_roll_finalized_at", "created_at")
-    list_filter = ("status", "election_type", "voting_mode")
+    list_display = ("name", "election_type", "voting_mode", "college", "status", "school_year", "registration_enabled", "start_time", "end_time", "voter_roll_finalized_at", "created_at")
+    list_filter = ("status", "election_type", "voting_mode", "registration_enabled", "school_year")
     search_fields = ("name", "college")
     readonly_fields = ("id", "created_at", "updated_at", "voter_roll_finalized_at", "voter_roll_finalized_by")
     ordering = ("-start_time",)
@@ -42,7 +45,7 @@ class ElectionAdmin(admin.ModelAdmin):
 
 @admin.register(Position)
 class PositionAdmin(admin.ModelAdmin):
-    list_display = ("title", "election", "category", "max_selections", "order")
+    list_display = ("title", "election", "category", "scope_college", "max_selections", "order")
     list_filter = ("category", "election")
     search_fields = ("title", "election__name")
     readonly_fields = ("id",)
@@ -75,6 +78,33 @@ class VerificationRecordAdmin(admin.ModelAdmin):
     search_fields = ("student_id_input", "full_name_input")
     readonly_fields = ("id", "imported_at")
     ordering = ("-imported_at",)
+
+
+@admin.register(SchoolYear)
+class SchoolYearAdmin(admin.ModelAdmin):
+    list_display = ("name", "academic_year", "status", "created_at")
+    list_filter = ("status",)
+    search_fields = ("name", "academic_year")
+    readonly_fields = ("id", "created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
+@admin.register(EnrollmentRecord)
+class EnrollmentRecordAdmin(admin.ModelAdmin):
+    list_display = ("student_identifier", "full_name", "school_year", "college", "course", "year_level", "status")
+    list_filter = ("school_year", "status", "college")
+    search_fields = ("student_identifier", "full_name", "student__student_id")
+    readonly_fields = ("id", "created_at", "updated_at")
+    ordering = ("school_year", "student_identifier")
+
+
+@admin.register(VoterRegistration)
+class VoterRegistrationAdmin(admin.ModelAdmin):
+    list_display = ("student", "election", "status", "source", "college_snapshot", "requested_at", "decided_at")
+    list_filter = ("status", "source", "election", "college_snapshot")
+    search_fields = ("student__student_id", "student__full_name", "election__name")
+    readonly_fields = ("id", "requested_at")
+    ordering = ("-requested_at",)
 
 
 @admin.register(HybridImportBatch)

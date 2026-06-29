@@ -954,6 +954,51 @@ footer {
     padding: 0.25rem 0.6rem; border-radius: 1rem; font-size: 0.7rem; font-weight: 600;
     display: inline-flex; align-items: center; gap: 0.25rem;
 }
+.registration-workflow-card {
+    border-color: rgba(107,29,42,0.18);
+    box-shadow: 0 0 0 3px rgba(107,29,42,0.035);
+}
+.registration-stat {
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius-sm);
+    padding: 0.85rem 1rem;
+    min-height: 76px;
+    background: #F9FAFB;
+}
+.csv-fallback {
+    border: 1px dashed var(--cems-border);
+    border-radius: var(--cems-radius);
+    background: #FFFFFF;
+    padding: 0.85rem 1rem;
+}
+.csv-fallback summary {
+    cursor: pointer;
+    color: var(--cems-text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.roster-list-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 1px solid var(--cems-border);
+    border-radius: var(--cems-radius-sm);
+    padding: 0.85rem;
+    margin-bottom: 0.65rem;
+    cursor: pointer;
+    transition: border-color var(--cems-transition), box-shadow var(--cems-transition), background var(--cems-transition);
+}
+.roster-list-item:hover,
+.roster-list-item.active {
+    border-color: var(--cems-primary);
+    box-shadow: 0 0 0 3px rgba(107,29,42,0.06);
+    background: #FFFDFB;
+}
+.roster-table td,
+.roster-table th {
+    vertical-align: middle;
+}
 
 /* ---------- Primary Action with Subtext ---------- */
 .primary-action-wrap { text-align: right; }

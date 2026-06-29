@@ -15,19 +15,30 @@ from PIL import Image
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.decorators import admin_login_required, role_required
 from apps.accounts.models import AdminRole
-from apps.elections.models import Candidate, College, Election, Position, RegistrarImportBatch
+from apps.elections.models import (
+    Candidate,
+    College,
+    Election,
+    EnrollmentRecord,
+    Position,
+    RegistrarImportBatch,
+    SchoolYear,
+)
 from apps.elections.hybrid_services import HybridElectionError, HybridElectionService
 from apps.elections.services import (
     RegistrarBatchService,
+    SchoolYearRosterService,
     TurnoutService,
     VoterRollError,
     VoterRollService,
+    WebVoterRegistrationService,
 )
 from apps.elections.setup_services import (
     CandidateManagementService,
@@ -98,6 +109,14 @@ def _parse_json_body(request):
         )
 
 
+def _coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _get_election_or_404(election_id):
     """Fetch election by UUID. Returns (election, error_response)."""
     try:
@@ -107,6 +126,34 @@ def _get_election_or_404(election_id):
             {"success": False, "error": "Election not found."},
             status=404,
         )
+
+
+def _serialize_school_year(school_year):
+    return {
+        "id": str(school_year.pk),
+        "name": school_year.name,
+        "academic_year": school_year.academic_year,
+        "status": school_year.status,
+        "created_at": school_year.created_at.isoformat(),
+        "updated_at": school_year.updated_at.isoformat(),
+    }
+
+
+def _serialize_enrollment(enrollment):
+    return {
+        "id": str(enrollment.pk),
+        "school_year_id": str(enrollment.school_year_id),
+        "student_id": enrollment.student_identifier,
+        "student_pk": str(enrollment.student_id),
+        "full_name": enrollment.full_name,
+        "date_of_birth": enrollment.date_of_birth.isoformat(),
+        "college": enrollment.college,
+        "course": enrollment.course,
+        "year_level": enrollment.year_level,
+        "status": enrollment.status,
+        "created_at": enrollment.created_at.isoformat(),
+        "updated_at": enrollment.updated_at.isoformat(),
+    }
 
 
 def _get_banner_url(election):
@@ -135,6 +182,13 @@ def _serialize_election_summary(election):
         "voter_roll_finalized": election.is_voter_roll_finalized,
         "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
         "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
+        "school_year_id": str(election.school_year_id) if election.school_year_id else None,
+        "school_year_name": election.school_year.name if election.school_year_id else None,
+        "registration_enabled": election.registration_enabled,
+        "registration_closes_at": (
+            election.registration_closes_at.isoformat()
+            if election.registration_closes_at else None
+        ),
         "created_at": election.created_at.isoformat(),
         "banner_url": banner_url,
     }
@@ -158,6 +212,7 @@ def _serialize_election_detail(election):
             "title": pos.title,
             "category": pos.category,
             "category_display": pos.get_category_display(),
+            "scope_college": pos.scope_college,
             "max_selections": pos.max_selections,
             "order": pos.order,
             "candidates": [
@@ -204,6 +259,13 @@ def _serialize_election_detail(election):
         ),
         "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
         "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
+        "school_year_id": str(election.school_year_id) if election.school_year_id else None,
+        "school_year_name": election.school_year.name if election.school_year_id else None,
+        "registration_enabled": election.registration_enabled,
+        "registration_closes_at": (
+            election.registration_closes_at.isoformat()
+            if election.registration_closes_at else None
+        ),
         "created_at": election.created_at.isoformat(),
         "positions": positions_data,
         "voter_roll_summary": {
@@ -588,6 +650,7 @@ def create_position(request, election_id):
             category=data.get("category", ""),
             max_selections=max_sel,
             order=order,
+            scope_college=data.get("scope_college", ""),
         )
     except ElectionSetupError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
@@ -600,6 +663,7 @@ def create_position(request, election_id):
             "title": position.title,
             "category": position.category,
             "category_display": position.get_category_display(),
+            "scope_college": position.scope_college,
             "max_selections": position.max_selections,
             "order": position.order,
         },
@@ -658,6 +722,7 @@ def update_position(request, election_id, position_id):
             category=data.get("category"),
             max_selections=max_sel,
             order=order,
+            scope_college=data.get("scope_college"),
         )
     except ElectionSetupError as e:
         return JsonResponse({"success": False, "error": str(e)}, status=400)
@@ -670,6 +735,7 @@ def update_position(request, election_id, position_id):
             "title": position.title,
             "category": position.category,
             "category_display": position.get_category_display(),
+            "scope_college": position.scope_college,
             "max_selections": position.max_selections,
             "order": position.order,
         },
@@ -1281,6 +1347,288 @@ def delete_candidate(request, election_id, candidate_id):
     return JsonResponse({
         "success": True,
         "message": f"Candidate '{candidate.full_name}' deactivated.",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Web registration roster management
+# ---------------------------------------------------------------------------
+
+def _get_school_year_or_404(school_year_id):
+    try:
+        return SchoolYear.objects.get(pk=school_year_id), None
+    except (SchoolYear.DoesNotExist, ValueError, ValidationError):
+        return None, JsonResponse(
+            {"success": False, "error": "School year not found."},
+            status=404,
+        )
+
+
+def _get_enrollment_or_404(enrollment_id):
+    try:
+        return (
+            EnrollmentRecord.objects
+            .select_related("school_year", "student")
+            .get(pk=enrollment_id)
+        ), None
+    except (EnrollmentRecord.DoesNotExist, ValueError, ValidationError):
+        return None, JsonResponse(
+            {"success": False, "error": "Enrollment record not found."},
+            status=404,
+        )
+
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
+def list_school_years(request):
+    """GET /api/admin/elections/setup/school-years/"""
+    include_archived = request.GET.get("include_archived", "true").lower() == "true"
+    school_years = SchoolYearRosterService.list_school_years(
+        include_archived=include_archived,
+    )
+    return JsonResponse({
+        "success": True,
+        "school_years": [_serialize_school_year(sy) for sy in school_years],
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def create_school_year(request):
+    """POST /api/admin/elections/setup/school-years/create/"""
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    try:
+        school_year = SchoolYearRosterService.create_school_year(
+            name=data.get("name", ""),
+            academic_year=data.get("academic_year", ""),
+            activate=_coerce_bool(data.get("activate", False)),
+        )
+    except VoterRollError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "school_year": _serialize_school_year(school_year),
+    }, status=201)
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def activate_school_year(request, school_year_id):
+    """POST /api/admin/elections/setup/school-years/<id>/activate/"""
+    school_year, err = _get_school_year_or_404(school_year_id)
+    if err:
+        return err
+    school_year = SchoolYearRosterService.activate_school_year(school_year)
+    return JsonResponse({
+        "success": True,
+        "school_year": _serialize_school_year(school_year),
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def archive_school_year(request, school_year_id):
+    """POST /api/admin/elections/setup/school-years/<id>/archive/"""
+    school_year, err = _get_school_year_or_404(school_year_id)
+    if err:
+        return err
+    school_year = SchoolYearRosterService.archive_school_year(school_year)
+    return JsonResponse({
+        "success": True,
+        "school_year": _serialize_school_year(school_year),
+    })
+
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
+def list_enrollments(request, school_year_id):
+    """GET /api/admin/elections/setup/school-years/<id>/enrollments/"""
+    school_year, err = _get_school_year_or_404(school_year_id)
+    if err:
+        return err
+    status = request.GET.get("status", "")
+    qs = (
+        EnrollmentRecord.objects
+        .filter(school_year=school_year)
+        .select_related("student", "school_year")
+        .order_by("student_identifier")
+    )
+    if status:
+        qs = qs.filter(status=status)
+    try:
+        limit = min(int(request.GET.get("limit", 500)), 2000)
+    except (TypeError, ValueError):
+        limit = 500
+    return JsonResponse({
+        "success": True,
+        "school_year": _serialize_school_year(school_year),
+        "enrollments": [_serialize_enrollment(e) for e in qs[:limit]],
+        "total": qs.count(),
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def create_enrollment(request, school_year_id):
+    """POST /api/admin/elections/setup/school-years/<id>/enrollments/create/"""
+    school_year, err = _get_school_year_or_404(school_year_id)
+    if err:
+        return err
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    try:
+        enrollment, created = SchoolYearRosterService.create_or_update_enrollment(
+            school_year=school_year,
+            student_id=data.get("student_id", ""),
+            full_name=data.get("full_name", ""),
+            date_of_birth=data.get("date_of_birth", ""),
+            college=data.get("college", ""),
+            course=data.get("course", ""),
+            year_level=data.get("year_level", data.get("year", 1)),
+            status=data.get("status", EnrollmentRecord.Status.ACTIVE),
+        )
+    except VoterRollError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "created": created,
+        "enrollment": _serialize_enrollment(enrollment),
+    }, status=201 if created else 200)
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def update_enrollment(request, enrollment_id):
+    """POST /api/admin/elections/setup/enrollments/<id>/update/"""
+    enrollment, err = _get_enrollment_or_404(enrollment_id)
+    if err:
+        return err
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    try:
+        enrollment, _ = SchoolYearRosterService.create_or_update_enrollment(
+            school_year=enrollment.school_year,
+            student_id=data.get("student_id", enrollment.student_identifier),
+            full_name=data.get("full_name", enrollment.full_name),
+            date_of_birth=data.get("date_of_birth", enrollment.date_of_birth),
+            college=data.get("college", enrollment.college),
+            course=data.get("course", enrollment.course),
+            year_level=data.get("year_level", enrollment.year_level),
+            status=data.get("status", enrollment.status),
+        )
+    except VoterRollError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "enrollment": _serialize_enrollment(enrollment),
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def deactivate_enrollment(request, enrollment_id):
+    """POST /api/admin/elections/setup/enrollments/<id>/deactivate/"""
+    enrollment, err = _get_enrollment_or_404(enrollment_id)
+    if err:
+        return err
+    enrollment = SchoolYearRosterService.deactivate_enrollment(enrollment)
+    return JsonResponse({
+        "success": True,
+        "enrollment": _serialize_enrollment(enrollment),
+    })
+
+
+@require_POST
+@csrf_protect
+@admin_login_required
+@role_required(*SETUP_ROLES)
+def update_registration_settings(request, election_id):
+    """POST /api/admin/elections/setup/<id>/registration/settings/"""
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    school_year = None
+    if "school_year_id" in data and data.get("school_year_id"):
+        school_year, err = _get_school_year_or_404(data.get("school_year_id"))
+        if err:
+            return err
+
+    registration_closes_at = None
+    clear_registration_closes_at = False
+    if "registration_closes_at" in data:
+        raw_deadline = data.get("registration_closes_at")
+        if raw_deadline:
+            registration_closes_at = parse_datetime(raw_deadline)
+            if registration_closes_at is None:
+                return JsonResponse(
+                    {"success": False, "error": "registration_closes_at must be a valid ISO datetime."},
+                    status=400,
+                )
+        else:
+            clear_registration_closes_at = True
+
+    try:
+        election = ElectionSetupService.update_draft_election_registration_settings(
+            election,
+            school_year=school_year,
+            registration_enabled=(
+                _coerce_bool(data["registration_enabled"])
+                if "registration_enabled" in data
+                else None
+            ),
+            registration_closes_at=registration_closes_at,
+            clear_registration_closes_at=clear_registration_closes_at,
+        )
+    except ElectionSetupError as e:
+        return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    election.refresh_from_db()
+    return JsonResponse({
+        "success": True,
+        "registration": WebVoterRegistrationService.summarize_election(election),
+        "election": _serialize_election_detail(election),
+    })
+
+
+@require_GET
+@admin_login_required
+@role_required(*SETUP_ROLES, AdminRole.TALLY_WATCHER)
+def registration_summary(request, election_id):
+    """GET /api/admin/elections/setup/<id>/registration/summary/"""
+    election, err = _get_election_or_404(election_id)
+    if err:
+        return err
+    return JsonResponse({
+        "success": True,
+        "registration": WebVoterRegistrationService.summarize_election(election),
     })
 
 

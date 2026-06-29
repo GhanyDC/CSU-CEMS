@@ -55,6 +55,52 @@ class College(models.Model):
         return self.name
 
 
+class SchoolYear(models.Model):
+    """A school-year enrollment roster boundary used for web voter registration."""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        ARCHIVED = "archived", "Archived"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(
+        max_length=255,
+        help_text="Display name, e.g. 'AY 2026-2027'.",
+    )
+    academic_year = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="Academic year label, e.g. '2026-2027'.",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.ARCHIVED,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "School Year"
+        verbose_name_plural = "School Years"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year"],
+                name="unique_school_year_academic_year",
+            ),
+            models.UniqueConstraint(
+                fields=["status"],
+                condition=models.Q(status="active"),
+                name="single_active_school_year",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.get_status_display()})"
+
+
 class RegistrarImportBatch(models.Model):
     """
     System-level registrar import batch representing a school-year dataset.
@@ -138,6 +184,14 @@ class Election(models.Model):
         related_name="elections",
         help_text="The registrar import batch used for voter roll matching.",
     )
+    school_year = models.ForeignKey(
+        SchoolYear,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="elections",
+        help_text="School-year enrollment roster used for web voter registration.",
+    )
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     status = models.CharField(
@@ -159,6 +213,15 @@ class Election(models.Model):
         blank=True,
         validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"])],
         help_text="Optional banner image (JPG, PNG, or WebP, max 5 MB).",
+    )
+    registration_enabled = models.BooleanField(
+        default=False,
+        help_text="Allow enrolled students to register themselves for this election.",
+    )
+    registration_closes_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional deadline for web voter registration.",
     )
     voter_roll_finalized_at = models.DateTimeField(null=True, blank=True)
     voter_roll_finalized_by = models.CharField(max_length=255, blank=True, default="")
@@ -254,6 +317,15 @@ class Position(models.Model):
         max_length=20,
         choices=Category.choices,
         db_index=True,
+    )
+    scope_college = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "College represented by this position. Required for campus "
+            "House College Representative seats."
+        ),
     )
     max_selections = models.PositiveSmallIntegerField(
         default=1,
@@ -376,6 +448,54 @@ class EligibleVoter(models.Model):
         return f"{self.student} – {self.election.name}"
 
 
+class EnrollmentRecord(models.Model):
+    """A student's official enrollment in a specific school year."""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school_year = models.ForeignKey(
+        SchoolYear,
+        on_delete=models.PROTECT,
+        related_name="enrollments",
+    )
+    student = models.ForeignKey(
+        "accounts.Student",
+        on_delete=models.PROTECT,
+        related_name="enrollments",
+    )
+    student_identifier = models.CharField(max_length=50, db_index=True)
+    full_name = models.CharField(max_length=255)
+    date_of_birth = models.DateField()
+    college = models.CharField(max_length=255, db_index=True)
+    course = models.CharField(max_length=255)
+    year_level = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["school_year", "student_identifier"]
+        verbose_name = "Enrollment Record"
+        verbose_name_plural = "Enrollment Records"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["school_year", "student_identifier"],
+                name="unique_enrollment_per_school_year_student_identifier",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student_identifier} - {self.school_year.name}"
+
+
 class VerificationRecord(models.Model):
     """
     Per-election verification form staging record.
@@ -426,6 +546,72 @@ class VerificationRecord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.student_id_input} – {self.election.name} ({self.get_status_display()})"
+
+
+class VoterRegistration(models.Model):
+    """A web self-registration attempt that can approve election eligibility."""
+
+    class Status(models.TextChoices):
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    class Source(models.TextChoices):
+        WEB = "web", "Web"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    election = models.ForeignKey(
+        Election,
+        on_delete=models.CASCADE,
+        related_name="voter_registrations",
+    )
+    student = models.ForeignKey(
+        "accounts.Student",
+        on_delete=models.PROTECT,
+        related_name="voter_registrations",
+    )
+    enrollment_record = models.ForeignKey(
+        EnrollmentRecord,
+        on_delete=models.PROTECT,
+        related_name="voter_registrations",
+    )
+    eligible_voter = models.OneToOneField(
+        EligibleVoter,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="registration",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.APPROVED,
+        db_index=True,
+    )
+    source = models.CharField(
+        max_length=10,
+        choices=Source.choices,
+        default=Source.WEB,
+        db_index=True,
+    )
+    college_snapshot = models.CharField(max_length=255)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-requested_at"]
+        verbose_name = "Voter Registration"
+        verbose_name_plural = "Voter Registrations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["election", "student"],
+                name="unique_voter_registration_per_election_student",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student} - {self.election.name} ({self.get_status_display()})"
 
 
 class HybridImportBatch(models.Model):

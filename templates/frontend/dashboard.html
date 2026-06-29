@@ -54,6 +54,7 @@
             <div class="col-lg-7">
                 <div class="cems-card p-4">
                     <h5 class="mb-3"><i class="bi bi-lightning-fill" style="color:var(--cems-accent)"></i> Your Elections</h5>
+                    <div id="registration-list" class="mb-3"></div>
                     <div id="elections-list"><div class="text-muted">Loading&hellip;</div></div>
                 </div>
             </div>
@@ -84,8 +85,73 @@
     document.getElementById('welcome-name').textContent = user.full_name || user.student_id;
     if (user.college) document.getElementById('welcome-college').textContent = user.college;
 
+    function renderRegistrationList(registrations) {
+        const container = document.getElementById('registration-list');
+        if (!container) return;
+        if (!registrations.length) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = '<div class="mb-3 pb-3 border-bottom">';
+        html += `<div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">
+            <div class="d-flex align-items-center gap-2" style="font-weight:600;color:var(--cems-primary)">
+                <i class="bi bi-person-check"></i><span>Registration Open</span>
+            </div>
+            <span class="badge-status badge-draft">${registrations.length} available</span>
+        </div>`;
+        for (const e of registrations) {
+            const typeLabel = e.election_type === 'campus' ? 'Campus Election' : `College &middot; ${CEMS.escapeHtml(e.college || '')}`;
+            const deadline = e.registration_closes_at ? new Date(e.registration_closes_at).toLocaleString() : 'No deadline set';
+            const action = e.registered
+                ? '<span class="badge-status badge-active"><i class="bi bi-check-lg"></i> Registered</span>'
+                : `<button class="btn btn-cems-primary btn-sm" onclick="registerForElection('${e.id}', this)"><i class="bi bi-person-plus"></i> Register</button>`;
+            html += `
+                <div class="dash-election-card">
+                    <div class="card-info">
+                        <div class="card-title-row">
+                            <span class="card-title">${CEMS.escapeHtml(e.name)}</span>
+                            <span class="badge-status badge-draft">Registration</span>
+                        </div>
+                        <span class="card-type">${typeLabel}</span>
+                        <div class="metric-sub mt-1">
+                            <i class="bi bi-calendar3"></i> ${CEMS.escapeHtml(e.school_year || '')}
+                            <span class="mx-1">&middot;</span>
+                            <i class="bi bi-clock"></i> ${CEMS.escapeHtml(deadline)}
+                        </div>
+                    </div>
+                    <div>${action}</div>
+                </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    window.registerForElection = async function(electionId, button) {
+        const original = button ? button.innerHTML : '';
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Registering';
+        }
+        try {
+            const res = await CEMS.api(`/api/registration/elections/${electionId}/register/`, { method: 'POST', body: '{}' });
+            if (!res.success) throw new Error(res.error || 'Registration failed.');
+            CEMS.showToast('Registration approved. You are now on the voter roll.', 'success');
+            setTimeout(function() { window.location.reload(); }, 800);
+        } catch (err) {
+            CEMS.showToast(err.message || 'Registration failed.', 'danger');
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = original;
+            }
+        }
+    };
+
     // Fetch eligible elections via the /api/elections/mine/ endpoint
     try {
+        const registrationData = await CEMS.api('/api/registration/available/');
+        renderRegistrationList(registrationData.elections || []);
+
         const data = await CEMS.api('/api/elections/mine/');
         const elections = data.elections || [];
 

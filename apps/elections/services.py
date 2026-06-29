@@ -2,9 +2,10 @@
 Election services — lifecycle management, result computation, and voter roll management.
 """
 import logging
+from datetime import date
 
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
@@ -13,11 +14,20 @@ from apps.elections.constants import OFFICIAL_COLLEGES
 from apps.elections.hybrid_services import HybridElectionService
 from apps.elections.models import (
     Candidate,
+    EnrollmentRecord,
     Election,
     EligibleVoter,
     Position,
     RegistrarImportBatch,
+    SchoolYear,
+    VoterRegistration,
     VerificationRecord,
+)
+from apps.elections.scope import (
+    college_matches,
+    normalize_college,
+    resolve_official_college,
+    resolve_position_scope_college,
 )
 from apps.voting.models import Ballot, BallotSelection
 
@@ -125,12 +135,16 @@ class ElectionLifecycleService:
 
     @classmethod
     def start_election(cls, election: Election, **kwargs) -> Election:
-        # Voter roll must be finalized before starting (only check for valid transition)
         fresh = Election.objects.get(pk=election.pk)
-        if fresh.status == Election.Status.DRAFT and not fresh.is_voter_roll_finalized:
-            raise ElectionNotReadyError(
-                "Cannot start election: voter roll has not been finalized."
-            )
+        if fresh.status == Election.Status.DRAFT:
+            from apps.elections.setup_services import ReadinessService
+
+            readiness = ReadinessService.check_readiness(fresh)
+            if not readiness["ready"]:
+                issues = "; ".join(readiness["blocking_issues"][:5])
+                raise ElectionNotReadyError(
+                    f"Cannot start election: {issues}"
+                )
         return cls.transition(election, Election.Status.ACTIVE, **kwargs)
 
     @classmethod
@@ -178,7 +192,7 @@ class ResultService:
         eligible_by_college = {}
         if election.is_campus:
             eligible_by_college = {
-                row["college_snapshot"]: row["count"]
+                normalize_college(row["college_snapshot"]): row["count"]
                 for row in (
                     EligibleVoter.objects
                     .filter(election=election)
@@ -442,11 +456,14 @@ class ResultService:
         Return the denominator and scope label for the position's 50%+1 rule.
         """
         if position.category == Position.Category.HOUSE_COLLEGE and position.election.is_campus:
-            represented_college = ResultService._resolve_house_college_scope(
+            represented_college = resolve_position_scope_college(
                 position,
-                results,
+                candidate_colleges=[row.get("college", "") for row in results],
             )
-            return eligible_by_college.get(represented_college, 0), represented_college
+            return (
+                eligible_by_college.get(normalize_college(represented_college), 0),
+                represented_college,
+            )
 
         if position.election.is_college:
             return total_eligible, position.election.college or "college election"
@@ -546,6 +563,405 @@ class TurnoutService:
                 2,
             ),
             "by_college": turnout["by_college"],
+        }
+
+
+# ---------------------------------------------------------------------------
+# School-year roster and web voter registration
+# ---------------------------------------------------------------------------
+
+class RegistrationError(Exception):
+    """Raised when a student cannot register for an election."""
+
+
+class SchoolYearRosterService:
+    """Manage school years and their enrolled-student roster records."""
+
+    @staticmethod
+    def _parse_date(value) -> date:
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat((value or "").strip())
+        except (TypeError, ValueError):
+            raise VoterRollError("date_of_birth must be in YYYY-MM-DD format.")
+
+    @staticmethod
+    def _parse_year(value) -> int:
+        try:
+            year_level = int(value)
+        except (TypeError, ValueError):
+            raise VoterRollError("year_level must be a positive integer.")
+        if year_level < 1:
+            raise VoterRollError("year_level must be a positive integer.")
+        return year_level
+
+    @staticmethod
+    @transaction.atomic
+    def create_school_year(
+        name: str,
+        academic_year: str,
+        *,
+        activate: bool = False,
+    ) -> SchoolYear:
+        """Create a school-year roster boundary."""
+        name = (name or "").strip()
+        academic_year = (academic_year or "").strip()
+        if not name:
+            raise VoterRollError("School year name is required.")
+        if not academic_year:
+            raise VoterRollError("academic_year is required.")
+        if SchoolYear.objects.filter(academic_year=academic_year).exists():
+            raise VoterRollError("A school year with this academic_year already exists.")
+
+        school_year = SchoolYear.objects.create(
+            name=name,
+            academic_year=academic_year,
+            status=SchoolYear.Status.ARCHIVED,
+        )
+        if activate:
+            school_year = SchoolYearRosterService.activate_school_year(school_year)
+        return school_year
+
+    @staticmethod
+    @transaction.atomic
+    def activate_school_year(school_year: SchoolYear) -> SchoolYear:
+        """Mark exactly one school year as active."""
+        SchoolYear.objects.filter(status=SchoolYear.Status.ACTIVE).exclude(
+            pk=school_year.pk
+        ).update(status=SchoolYear.Status.ARCHIVED)
+        school_year.status = SchoolYear.Status.ACTIVE
+        school_year.save(update_fields=["status", "updated_at"])
+        return school_year
+
+    @staticmethod
+    @transaction.atomic
+    def archive_school_year(school_year: SchoolYear) -> SchoolYear:
+        """Archive a school year without deleting its historical roster."""
+        school_year.status = SchoolYear.Status.ARCHIVED
+        school_year.save(update_fields=["status", "updated_at"])
+        return school_year
+
+    @staticmethod
+    def list_school_years(include_archived: bool = True):
+        qs = SchoolYear.objects.all()
+        if not include_archived:
+            qs = qs.filter(status=SchoolYear.Status.ACTIVE)
+        return qs.order_by("-created_at")
+
+    @staticmethod
+    def get_active_enrollment(student, school_year: SchoolYear) -> EnrollmentRecord | None:
+        """Return the student's active enrollment for the given school year."""
+        return (
+            EnrollmentRecord.objects
+            .select_related("student", "school_year")
+            .filter(
+                school_year=school_year,
+                status=EnrollmentRecord.Status.ACTIVE,
+            )
+            .filter(Q(student=student) | Q(student_identifier=student.student_id))
+            .first()
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def create_or_update_enrollment(
+        *,
+        school_year: SchoolYear,
+        student_id: str,
+        full_name: str,
+        date_of_birth,
+        college: str,
+        course: str,
+        year_level=1,
+        status: str = EnrollmentRecord.Status.ACTIVE,
+    ) -> tuple[EnrollmentRecord, bool]:
+        """
+        Upsert an official enrollment record and keep Student identity in sync.
+        """
+        from apps.accounts.models import Student
+
+        student_id = (student_id or "").strip()
+        full_name = (full_name or "").strip()
+        college = resolve_official_college(college)
+        course = (course or "").strip()
+        dob = SchoolYearRosterService._parse_date(date_of_birth)
+        year_value = SchoolYearRosterService._parse_year(year_level)
+
+        if not student_id:
+            raise VoterRollError("student_id is required.")
+        if not full_name:
+            raise VoterRollError("full_name is required.")
+        if not college:
+            raise VoterRollError("college is required.")
+        if not course:
+            raise VoterRollError("course is required.")
+        if status not in {choice[0] for choice in EnrollmentRecord.Status.choices}:
+            raise VoterRollError(f"Invalid enrollment status '{status}'.")
+
+        student, _ = Student.objects.update_or_create(
+            student_id=student_id,
+            defaults={
+                "full_name": full_name,
+                "date_of_birth": dob,
+                "college": college,
+                "course": course,
+                "year": year_value,
+            },
+        )
+
+        enrollment, created = EnrollmentRecord.objects.update_or_create(
+            school_year=school_year,
+            student_identifier=student_id,
+            defaults={
+                "student": student,
+                "full_name": full_name,
+                "date_of_birth": dob,
+                "college": college,
+                "course": course,
+                "year_level": year_value,
+                "status": status,
+            },
+        )
+        return enrollment, created
+
+    @staticmethod
+    @transaction.atomic
+    def deactivate_enrollment(enrollment: EnrollmentRecord) -> EnrollmentRecord:
+        """Deactivate one roster entry without deleting history."""
+        enrollment.status = EnrollmentRecord.Status.INACTIVE
+        enrollment.save(update_fields=["status", "updated_at"])
+        return enrollment
+
+
+class WebVoterRegistrationService:
+    """Student self-registration backed by school-year enrollment records."""
+
+    @staticmethod
+    def registration_is_open(election: Election, now=None) -> tuple[bool, str]:
+        now = now or timezone.now()
+        if election.status != Election.Status.DRAFT:
+            return False, "Registration is only available while the election is in Draft."
+        if not election.registration_enabled:
+            return False, "Registration is not enabled for this election."
+        if election.is_voter_roll_finalized:
+            return False, "The voter roll is already finalized."
+        if not election.school_year_id:
+            return False, "This election is not linked to a school year."
+        if election.registration_closes_at and now > election.registration_closes_at:
+            return False, "Registration is already closed."
+        return True, ""
+
+    @staticmethod
+    def _ensure_can_register(student, election: Election) -> EnrollmentRecord:
+        open_ok, reason = WebVoterRegistrationService.registration_is_open(election)
+        if not open_ok:
+            raise RegistrationError(reason)
+
+        enrollment = SchoolYearRosterService.get_active_enrollment(
+            student,
+            election.school_year,
+        )
+        if enrollment is None:
+            raise RegistrationError(
+                "You do not have an active enrollment record for this school year."
+            )
+
+        if election.is_college and not college_matches(enrollment.college, election.college):
+            raise RegistrationError(
+                "You are not eligible to register for this college election."
+            )
+
+        return enrollment
+
+    @staticmethod
+    def build_registration_status(student, election: Election) -> dict:
+        """Return a student-facing registration status payload."""
+        registration = (
+            VoterRegistration.objects
+            .filter(election=election, student=student)
+            .select_related("eligible_voter", "enrollment_record")
+            .first()
+        )
+        enrollment = None
+        if election.school_year_id:
+            enrollment = SchoolYearRosterService.get_active_enrollment(
+                student,
+                election.school_year,
+            )
+        open_ok, reason = WebVoterRegistrationService.registration_is_open(election)
+        college_ok = True
+        if enrollment and election.is_college:
+            college_ok = college_matches(enrollment.college, election.college)
+            if not college_ok and not reason:
+                reason = "You are not eligible to register for this college election."
+
+        return {
+            "election_id": str(election.pk),
+            "registration_open": open_ok and bool(enrollment) and college_ok,
+            "reason": "" if open_ok and enrollment and college_ok else (
+                reason or "You do not have an active enrollment record for this school year."
+            ),
+            "registered": bool(registration and registration.status == VoterRegistration.Status.APPROVED),
+            "status": registration.status if registration else None,
+            "eligible_voter_id": (
+                str(registration.eligible_voter_id)
+                if registration and registration.eligible_voter_id
+                else None
+            ),
+            "school_year": election.school_year.name if election.school_year_id else "",
+            "college_snapshot": (
+                registration.college_snapshot
+                if registration
+                else (enrollment.college if enrollment else "")
+            ),
+            "registration_closes_at": (
+                election.registration_closes_at.isoformat()
+                if election.registration_closes_at else None
+            ),
+        }
+
+    @staticmethod
+    def available_elections_for_student(student) -> list[dict]:
+        """Return draft elections the student can self-register for."""
+        elections = (
+            Election.objects
+            .select_related("school_year")
+            .filter(
+                status=Election.Status.DRAFT,
+                registration_enabled=True,
+                school_year__isnull=False,
+                voter_roll_finalized_at__isnull=True,
+            )
+            .order_by("start_time", "name")
+        )
+        available = []
+        for election in elections:
+            status = WebVoterRegistrationService.build_registration_status(
+                student,
+                election,
+            )
+            if not status["registration_open"] and not status["registered"]:
+                continue
+            available.append({
+                "id": str(election.pk),
+                "name": election.name,
+                "election_type": election.election_type,
+                "college": election.college,
+                "school_year": status["school_year"],
+                "start_time": election.start_time.isoformat(),
+                "end_time": election.end_time.isoformat(),
+                "registration_closes_at": status["registration_closes_at"],
+                "registered": status["registered"],
+                "status": status["status"],
+                "college_snapshot": status["college_snapshot"],
+            })
+        return available
+
+    @staticmethod
+    @transaction.atomic
+    def register(
+        student,
+        election: Election,
+        *,
+        ip_address: str | None = None,
+        user_agent: str = "",
+    ) -> dict:
+        """
+        Auto-approve an exact enrolled student into the election voter roll.
+        """
+        election = (
+            Election.objects
+            .select_for_update()
+            .select_related("school_year")
+            .get(pk=election.pk)
+        )
+        enrollment = WebVoterRegistrationService._ensure_can_register(
+            student,
+            election,
+        )
+
+        eligible_voter, eligible_created = EligibleVoter.objects.get_or_create(
+            election=election,
+            student=student,
+            defaults={"college_snapshot": enrollment.college},
+        )
+        if not college_matches(eligible_voter.college_snapshot, enrollment.college):
+            eligible_voter.college_snapshot = enrollment.college
+            eligible_voter.save(update_fields=["college_snapshot"])
+
+        registration, created = VoterRegistration.objects.get_or_create(
+            election=election,
+            student=student,
+            defaults={
+                "enrollment_record": enrollment,
+                "eligible_voter": eligible_voter,
+                "status": VoterRegistration.Status.APPROVED,
+                "source": VoterRegistration.Source.WEB,
+                "college_snapshot": enrollment.college,
+                "decided_at": timezone.now(),
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            },
+        )
+
+        update_fields = []
+        if registration.status != VoterRegistration.Status.APPROVED:
+            registration.status = VoterRegistration.Status.APPROVED
+            registration.decided_at = timezone.now()
+            update_fields.extend(["status", "decided_at"])
+        if registration.enrollment_record_id != enrollment.pk:
+            registration.enrollment_record = enrollment
+            update_fields.append("enrollment_record")
+        if registration.eligible_voter_id != eligible_voter.pk:
+            registration.eligible_voter = eligible_voter
+            update_fields.append("eligible_voter")
+        if not college_matches(registration.college_snapshot, enrollment.college):
+            registration.college_snapshot = enrollment.college
+            update_fields.append("college_snapshot")
+        if ip_address and registration.ip_address != ip_address:
+            registration.ip_address = ip_address
+            update_fields.append("ip_address")
+        if user_agent and registration.user_agent != user_agent:
+            registration.user_agent = user_agent
+            update_fields.append("user_agent")
+        if update_fields:
+            registration.save(update_fields=update_fields)
+
+        return {
+            "registration": registration,
+            "eligible_voter": eligible_voter,
+            "created": created,
+            "eligible_created": eligible_created,
+        }
+
+    @staticmethod
+    def summarize_election(election: Election) -> dict:
+        """Return admin registration counts for an election."""
+        counts = {
+            row["status"]: row["count"]
+            for row in (
+                VoterRegistration.objects
+                .filter(election=election)
+                .values("status")
+                .annotate(count=Count("id"))
+            )
+        }
+        open_ok, reason = WebVoterRegistrationService.registration_is_open(election)
+        return {
+            "registration_enabled": election.registration_enabled,
+            "registration_open": open_ok,
+            "registration_closed_reason": reason,
+            "school_year_id": str(election.school_year_id) if election.school_year_id else None,
+            "school_year_name": election.school_year.name if election.school_year_id else "",
+            "registration_closes_at": (
+                election.registration_closes_at.isoformat()
+                if election.registration_closes_at else None
+            ),
+            "total": sum(counts.values()),
+            "approved": counts.get(VoterRegistration.Status.APPROVED, 0),
+            "rejected": counts.get(VoterRegistration.Status.REJECTED, 0),
+            "eligible_voters": EligibleVoter.objects.filter(election=election).count(),
         }
 
 
@@ -712,8 +1128,8 @@ class VoterRollService:
             if student.pk in existing_student_ids:
                 continue
 
-            # For college elections, only include students from the matching college (case-insensitive)
-            if election.is_college and (student.college or "").strip().lower() != election.college.strip().lower():
+            # For college elections, only include students from the matching college.
+            if election.is_college and not college_matches(student.college, election.college):
                 continue
 
             voters_to_create.append(EligibleVoter(

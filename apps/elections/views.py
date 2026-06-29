@@ -18,6 +18,11 @@ from apps.accounts.decorators import (
 from apps.accounts.models import AdminRole
 from apps.accounts.utils import get_client_ip
 from apps.elections.models import Candidate, College, Election, EligibleVoter, Position
+from apps.elections.scope import (
+    college_matches,
+    filter_candidates_for_voter,
+    position_visible_to_voter,
+)
 from apps.elections.services import (
     ElectionLifecycleService,
     ElectionNotReadyError,
@@ -57,8 +62,10 @@ def _get_eligible_elections(student):
         if e.status not in (Election.Status.ACTIVE, Election.Status.PUBLISHED):
             continue
 
-        # College election: enforce college match (case-insensitive)
-        if e.is_college and e.college.strip().lower() != (student.college or "").strip().lower():
+        voter_college = ev.college_snapshot or student.college or ""
+
+        # College election: enforce college match using the frozen roll snapshot
+        if e.is_college and not college_matches(e.college, voter_college):
             continue
 
         elections.append(e)
@@ -66,17 +73,35 @@ def _get_eligible_elections(student):
     return elections
 
 
+def _get_eligible_voter(student, election):
+    """Return the student's frozen voter-roll entry for this election, if any."""
+    return (
+        EligibleVoter.objects
+        .filter(election=election, student=student)
+        .only("college_snapshot")
+        .first()
+    )
+
+
+def _get_voter_college(student, election) -> str:
+    """Return the college to use for election scoping."""
+    eligible_voter = _get_eligible_voter(student, election)
+    if eligible_voter and eligible_voter.college_snapshot:
+        return eligible_voter.college_snapshot
+    return student.college or ""
+
+
 def _check_student_eligible(student, election):
     """
     Check if a student is eligible for a specific election.
     Returns (is_eligible, error_message).
     """
-    if not EligibleVoter.objects.filter(
-        election=election, student=student
-    ).exists():
+    eligible_voter = _get_eligible_voter(student, election)
+    if eligible_voter is None:
         return False, "You are not on the approved voter roll for this election."
 
-    if election.is_college and election.college.strip().lower() != (student.college or "").strip().lower():
+    voter_college = eligible_voter.college_snapshot or student.college or ""
+    if election.is_college and not college_matches(election.college, voter_college):
         return False, "You are not eligible for this college's election."
 
     return True, None
@@ -98,6 +123,45 @@ def _get_turnout_summary(election):
         "total_voted": turnout["total_voted"],
         "turnout_percentage": turnout["turnout_percentage"],
         "generated_at": turnout.get("generated_at"),
+    }
+
+
+def _serialize_position_for_voter(position, election, voter_college):
+    """Serialize a position with only candidates this voter may select."""
+    if not position_visible_to_voter(election, position, voter_college):
+        return None
+
+    candidates = list(
+        Candidate.objects
+        .filter(position=position, is_active=True)
+        .order_by("full_name")
+    )
+    candidates = filter_candidates_for_voter(
+        election,
+        position,
+        candidates,
+        voter_college,
+    )
+
+    return {
+        "id": str(position.pk),
+        "title": position.title,
+        "category": position.category,
+        "category_display": position.get_category_display(),
+        "scope_college": position.scope_college,
+        "max_selections": position.max_selections,
+        "single_candidate_threshold_applies": len(candidates) == 1,
+        "candidates": [
+            {
+                "id": str(candidate.pk),
+                "full_name": candidate.full_name,
+                "party": candidate.party,
+                "college": candidate.college or "",
+                "photo_url": candidate.photo.url if candidate.photo else None,
+                "platform_text": candidate.platform_text,
+            }
+            for candidate in candidates
+        ],
     }
 
 
@@ -176,6 +240,7 @@ def election_ballot(request, election_id):
 
     # Check if already voted
     voted = _has_voted(student, election)
+    voter_college = _get_voter_college(student, election)
 
     positions = (
         Position.objects
@@ -185,33 +250,9 @@ def election_ballot(request, election_id):
 
     positions_data = []
     for pos in positions:
-        candidates_qs = (
-            Candidate.objects
-            .filter(position=pos, is_active=True)
-            .order_by("full_name")
-        )
-
-        candidates = list(candidates_qs)
-
-        positions_data.append({
-            "id": str(pos.pk),
-            "title": pos.title,
-            "category": pos.category,
-            "category_display": pos.get_category_display(),
-            "max_selections": pos.max_selections,
-            "single_candidate_threshold_applies": len(candidates) == 1,
-            "candidates": [
-                {
-                    "id": str(c.pk),
-                    "full_name": c.full_name,
-                    "party": c.party,
-                    "college": c.college or "",
-                    "photo_url": c.photo.url if c.photo else None,
-                    "platform_text": c.platform_text,
-                }
-                for c in candidates
-            ],
-        })
+        pos_data = _serialize_position_for_voter(pos, election, voter_college)
+        if pos_data:
+            positions_data.append(pos_data)
 
     return JsonResponse({
         "success": True,
@@ -250,6 +291,7 @@ def current_election(request):
         )
 
     election = active[0]
+    voter_college = _get_voter_college(student, election)
     positions = (
         Position.objects
         .filter(election=election)
@@ -258,32 +300,9 @@ def current_election(request):
 
     positions_data = []
     for pos in positions:
-        candidates_qs = (
-            Candidate.objects
-            .filter(position=pos, is_active=True)
-            .order_by("full_name")
-        )
-
-        candidates = list(candidates_qs)
-
-        positions_data.append({
-            "id": str(pos.pk),
-            "title": pos.title,
-            "category": pos.category,
-            "max_selections": pos.max_selections,
-            "single_candidate_threshold_applies": len(candidates) == 1,
-            "candidates": [
-                {
-                    "id": str(c.pk),
-                    "full_name": c.full_name,
-                    "party": c.party,
-                    "college": c.college,
-                    "photo_url": c.photo.url if c.photo else None,
-                    "platform_text": c.platform_text,
-                }
-                for c in candidates
-            ],
-        })
+        pos_data = _serialize_position_for_voter(pos, election, voter_college)
+        if pos_data:
+            positions_data.append(pos_data)
 
     return JsonResponse({
         "success": True,

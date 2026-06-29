@@ -18,6 +18,10 @@
         </a>
         <div class="d-flex align-items-center gap-3">
             <span class="badge-role" id="nav-admin-role"></span>
+            <button class="btn btn-sm" id="nav-roster-btn" onclick="showSchoolYearsView()"
+                style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25);font-size:0.8rem">
+                <i class="bi bi-person-vcard"></i><span class="d-none d-sm-inline ms-1">Roster</span>
+            </button>
             <button class="btn btn-sm" id="nav-colleges-btn" onclick="showCollegesView()"
                 style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25);font-size:0.8rem">
                 <i class="bi bi-building"></i><span class="d-none d-sm-inline ms-1">Colleges</span>
@@ -109,6 +113,61 @@
     </div>
 
     <!-- ── Colleges Management View ──────────────────────────────────────── -->
+    <!-- School-Year Roster View -->
+    <div id="view-school-years" class="d-none">
+        <a href="#" class="text-decoration-none mb-3 d-inline-block" onclick="showElectionList(); return false;" style="color:var(--cems-primary)">
+            <i class="bi bi-arrow-left"></i> Back to Elections
+        </a>
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+            <div>
+                <h1 class="h3 mb-1">School-Year Roster</h1>
+                <p class="text-muted mb-0">Maintain enrolled students for web voter registration</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-cems-outline" onclick="showCreateSchoolYearModal()">
+                    <i class="bi bi-calendar-plus"></i> New School Year
+                </button>
+                <button class="btn btn-cems-primary" onclick="showEnrollmentModal()">
+                    <i class="bi bi-person-plus"></i> Add Student
+                </button>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="cems-card p-3">
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                        <h5 class="mb-0">School Years</h5>
+                        <button class="btn btn-sm btn-cems-outline" onclick="loadSchoolYears()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div id="school-year-list"></div>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="cems-card p-3">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                        <div>
+                            <h5 class="mb-0" id="enrollment-panel-title">Enrollment Roster</h5>
+                            <div class="text-muted small" id="enrollment-panel-subtitle">Select a school year to view enrolled students.</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <select class="form-select form-select-sm" id="enrollment-status-filter" style="width:auto" onchange="loadEnrollments()">
+                                <option value="">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                            <button class="btn btn-sm btn-cems-primary" onclick="showEnrollmentModal()">
+                                <i class="bi bi-person-plus"></i> Add
+                            </button>
+                        </div>
+                    </div>
+                    <div id="enrollment-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="view-colleges" class="d-none">
         <a href="#" class="text-decoration-none mb-3 d-inline-block" onclick="showElectionList(); return false;" style="color:var(--cems-primary)">
             <i class="bi bi-arrow-left"></i> Back to Elections
@@ -451,6 +510,10 @@
                         <option value="college_board">College Board Member</option>
                     </select>
                 </div>
+                <div class="mb-3 d-none" id="position-scope-college-wrap">
+                    <label class="form-label fw-semibold small">Represented College</label>
+                    <input type="text" class="form-control" id="position-scope-college" placeholder="e.g. College of Nursing">
+                </div>
                 <div class="row g-2 mb-0">
                     <div class="col-6">
                         <label class="form-label fw-semibold small">Max Selections</label>
@@ -542,6 +605,98 @@
     </div>
 </div>
 
+<!-- Create School Year -->
+<div class="modal fade" id="createSchoolYearModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-calendar-plus" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0">New School Year</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Display Name</label>
+                    <input type="text" class="form-control" id="school-year-name-input" placeholder="AY 2026-2027">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Academic Year</label>
+                    <input type="text" class="form-control" id="school-year-academic-input" placeholder="2026-2027">
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="school-year-active-input" checked>
+                    <label class="form-check-label small" for="school-year-active-input">Set as active school year</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitSchoolYearForm()">
+                    <i class="bi bi-check-lg me-1"></i>Create
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add / Edit Enrollment -->
+<div class="modal fade" id="enrollmentModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="d-flex align-items-center gap-2">
+                    <i class="bi bi-person-vcard" style="color:var(--cems-primary)"></i>
+                    <h5 class="modal-title mb-0" id="enrollment-modal-title">Add Student Enrollment</h5>
+                </span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="enrollment-edit-id">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold small">Student ID</label>
+                        <input type="text" class="form-control" id="enrollment-student-id-input">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label fw-semibold small">Full Name</label>
+                        <input type="text" class="form-control" id="enrollment-name-input">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold small">Date of Birth</label>
+                        <input type="date" class="form-control" id="enrollment-dob-input">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label fw-semibold small">College</label>
+                        <select class="form-select" id="enrollment-college-input"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold small">Course</label>
+                        <input type="text" class="form-control" id="enrollment-course-input">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small">Year Level</label>
+                        <input type="number" min="1" class="form-control" id="enrollment-year-input" value="1">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small">Status</label>
+                        <select class="form-select" id="enrollment-status-input">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cems-outline" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-cems-primary" onclick="submitEnrollmentForm()">
+                    <i class="bi bi-check-lg me-1"></i>Save Enrollment
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 {% endblock %}
 
@@ -558,12 +713,28 @@ let adminUser = null;
 let currentElectionDetail = null;
 let allElections = [];
 let currentTab = 'overview';
+let schoolYearList = [];
+let selectedSchoolYearId = null;
+let enrollmentList = [];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 function esc(s) { return CEMS.escapeHtml(s); }
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 function fmtDate(iso) { return iso ? new Date(iso).toLocaleDateString(undefined,{dateStyle:'medium'}) : '—'; }
 function fmtDateTime(iso) { return iso ? new Date(iso).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : '—'; }
+function fmtDateInput(iso) { return iso ? new Date(iso).toISOString().slice(0, 10) : ''; }
+function fmtDateTimeLocal(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+}
+function datetimeLocalToIso(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
 function statusBadge(s) { return `<span class="badge-status badge-${s}">${cap(s)}</span>`; }
 function typeBadge(t) { return `<span class="badge-type badge-${t}">${cap(t)}</span>`; }
 function modeBadge(m) { return `<span class="badge-type" style="background:${m === 'hybrid' ? 'var(--cems-warning-bg)' : '#EEF2FF'};color:${m === 'hybrid' ? 'var(--cems-warning)' : '#3730A3'}">${m === 'hybrid' ? 'Hybrid' : 'Online'}</span>`; }
@@ -586,6 +757,11 @@ function setFileMeta(targetId, file, extraHtml = '') {
 }
 
 // ── Initialization ───────────────────────────────────────────────────────
+function hideAdminViews() {
+    ['view-election-list', 'view-election-detail', 'view-batches', 'view-school-years', 'view-colleges']
+        .forEach(id => document.getElementById(id)?.classList.add('d-none'));
+}
+
 (function init() {
     const el = document.getElementById('cems-bootstrap-admin');
     if (el) { try { adminUser = JSON.parse(el.textContent); } catch(e) {} }
@@ -609,10 +785,8 @@ function setFileMeta(targetId, file, extraHtml = '') {
 //  ELECTION LIST
 // ══════════════════════════════════════════════════════════════════════════
 function showElectionList() {
+    hideAdminViews();
     document.getElementById('view-election-list').classList.remove('d-none');
-    document.getElementById('view-election-detail').classList.add('d-none');
-    document.getElementById('view-batches').classList.add('d-none');
-    document.getElementById('view-colleges').classList.add('d-none');
     currentElectionDetail = null;
     renderCreateButtons();
     renderElectionList();
@@ -632,6 +806,7 @@ function renderCreateButtons() {
     const canCreate = adminUser.is_eb_head || adminUser.is_operator;
     let html = '';
     if (canCreate) {
+        html += `<button class="btn btn-cems-outline btn-sm" onclick="showSchoolYearsView()"><i class="bi bi-person-vcard"></i> School-Year Roster</button>`;
         html += `<button class="btn btn-cems-outline btn-sm" onclick="showBatchesView()"><i class="bi bi-database"></i> Registrar Batches</button>`;
         html += `<button class="btn btn-cems-outline" onclick="showCreateCollegeModal()"><i class="bi bi-plus-lg"></i> Create College Elections</button>`;
         html += `<button class="btn btn-cems-primary" onclick="showCreateCampusModal()"><i class="bi bi-plus-lg"></i> Create Campus Election</button>`;
@@ -703,9 +878,7 @@ async function openElection(electionId) {
 
 function renderElectionDetail() {
     const el = currentElectionDetail;
-    document.getElementById('view-election-list').classList.add('d-none');
-    document.getElementById('view-batches').classList.add('d-none');
-    document.getElementById('view-colleges').classList.add('d-none');
+    hideAdminViews();
     document.getElementById('view-election-detail').classList.remove('d-none');
     const hybridTabButton = document.getElementById('hybrid-tab-button');
     hybridTabButton.classList.toggle('d-none', !isHybridElection(el));
@@ -1332,7 +1505,7 @@ async function renderPositions() {
             ${canManagePositions && el.positions.length > 1 ? `<div class="drag-handle me-2"><i class="bi bi-grip-vertical" style="font-size:1.15rem"></i></div>` : ''}
             <div style="flex:1">
                 <div class="position-name">${esc(pos.title)}</div>
-                <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}</div>
+                <div class="position-sub">Choose up to ${pos.max_selections} &nbsp;&middot;&nbsp; ${esc(pos.category_display)}${pos.scope_college ? ` &nbsp;&middot;&nbsp; ${esc(pos.scope_college)}` : ''}</div>
             </div>
             ${canManagePositions ? `<div class="position-actions">
                 <button class="icon-btn" onclick="event.stopPropagation();showEditPositionModal(${JSON.stringify(pos)})" title="Edit position"><i class="bi bi-pencil"></i></button>
@@ -1441,15 +1614,23 @@ async function renderPositions() {
 
 let editPositionId = null;
 
+function syncPositionScopeField() {
+    const category = document.getElementById('position-category').value;
+    const wrap = document.getElementById('position-scope-college-wrap');
+    if (wrap) wrap.classList.toggle('d-none', category !== 'house_college');
+}
+
 function showAddPositionModal() {
     editPositionId = null;
     document.getElementById('position-edit-id').value = '';
     document.getElementById('position-title').value = '';
     document.getElementById('position-category').value = 'executive';
+    document.getElementById('position-scope-college').value = '';
     document.getElementById('position-max-sel').value = '1';
     document.getElementById('position-order').value = '0';
     document.getElementById('position-modal-title').textContent = 'Add Position';
     document.getElementById('position-submit-label').textContent = 'Add Position';
+    syncPositionScopeField();
     new bootstrap.Modal(document.getElementById('addEditPositionModal')).show();
 }
 
@@ -1458,10 +1639,12 @@ function showEditPositionModal(pos) {
     document.getElementById('position-edit-id').value = pos.id;
     document.getElementById('position-title').value = pos.title;
     document.getElementById('position-category').value = pos.category;
+    document.getElementById('position-scope-college').value = pos.scope_college || '';
     document.getElementById('position-max-sel').value = pos.max_selections;
     document.getElementById('position-order').value = pos.order;
     document.getElementById('position-modal-title').textContent = 'Edit Position';
     document.getElementById('position-submit-label').textContent = 'Save Changes';
+    syncPositionScopeField();
     new bootstrap.Modal(document.getElementById('addEditPositionModal')).show();
 }
 
@@ -1469,10 +1652,15 @@ async function submitPositionForm() {
     const el = currentElectionDetail;
     const title = document.getElementById('position-title').value.trim();
     const category = document.getElementById('position-category').value;
+    const scopeCollege = document.getElementById('position-scope-college').value.trim();
     const maxSel = parseInt(document.getElementById('position-max-sel').value, 10) || 1;
     const order = parseInt(document.getElementById('position-order').value, 10) || 0;
     if (!title) { CEMS.showToast('Position title is required.', 'warning'); return; }
-    const body = { title, category, max_selections: maxSel, order };
+    if (category === 'house_college' && !scopeCollege) {
+        CEMS.showToast('Represented college is required for College Representative positions.', 'warning');
+        return;
+    }
+    const body = { title, category, max_selections: maxSel, order, scope_college: scopeCollege };
     try {
         let res;
         if (editPositionId) {
@@ -1488,6 +1676,8 @@ async function submitPositionForm() {
         } else CEMS.showToast(res.error, 'danger');
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
+
+document.getElementById('position-category')?.addEventListener('change', syncPositionScopeField);
 
 function confirmDeletePosition(posId, posTitle) {
     showConfirm('Delete Position', `Delete position "${posTitle}" and all its candidates? This cannot be undone.`, async () => {
@@ -1546,6 +1736,106 @@ function initPositionDnd() {
 }
 
 // ── Voter Roll Tab ───────────────────────────────────────────────────────
+function renderRegistrationWorkflowCard(el, registration, schoolYears, canEdit, canFinalize, rollSummary) {
+    const selectedYear = registration?.school_year_id || el.school_year_id || '';
+    const selectableYears = schoolYears.filter(sy => sy.status === 'active' || sy.id === selectedYear);
+    const options = selectableYears.length
+        ? selectableYears.map(sy => `<option value="${sy.id}" ${sy.id === selectedYear ? 'selected' : ''}>${esc(sy.name)}${sy.status === 'active' ? ' (active)' : ' (archived)'}</option>`).join('')
+        : '';
+    const disabled = canEdit ? '' : 'disabled';
+    const deadline = fmtDateTimeLocal(registration?.registration_closes_at || el.registration_closes_at);
+    const approved = registration?.approved || 0;
+    const eligible = registration?.eligible_voters ?? (rollSummary?.approved_count || 0);
+    const open = !!registration?.registration_open;
+    const openBadge = open
+        ? '<span class="badge-status badge-active"><i class="bi bi-broadcast"></i> Open</span>'
+        : `<span class="badge-status badge-draft">${esc(registration?.registration_closed_reason || 'Closed')}</span>`;
+    const scopeText = el.election_type === 'college'
+        ? `College scope: ${esc(el.college || 'Unset')}`
+        : 'Campus-wide scope';
+    const finalized = !!rollSummary?.finalized;
+    const finalizeBtn = canFinalize && eligible > 0
+        ? `<button class="btn btn-cems-primary" onclick="finalizeVoterRoll()"><i class="bi bi-lock me-1"></i>Finalize Roll</button>`
+        : '';
+    return `<div class="cems-card p-4 mb-4 registration-workflow-card">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+            <div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h5 class="mb-0">Web Registration</h5>
+                    ${openBadge}
+                    ${finalized ? '<span class="finalized-badge"><i class="bi bi-check-circle"></i> Finalized</span>' : ''}
+                </div>
+                <div class="text-muted small mt-1">${scopeText}</div>
+            </div>
+            <button class="btn btn-cems-outline btn-sm" onclick="showSchoolYearsView()">
+                <i class="bi bi-person-vcard"></i> Manage Roster
+            </button>
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-sm-4">
+                <div class="registration-stat">
+                    <div class="metric-label">School Year</div>
+                    <div class="fw-semibold">${esc(registration?.school_year_name || el.school_year_name || 'Not linked')}</div>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="registration-stat">
+                    <div class="metric-label">Approved Registrations</div>
+                    <div class="fw-bold" style="color:var(--cems-primary)">${approved.toLocaleString()}</div>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="registration-stat">
+                    <div class="metric-label">Eligible Voters</div>
+                    <div class="fw-bold" style="color:var(--cems-success)">${eligible.toLocaleString()}</div>
+                </div>
+            </div>
+        </div>
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label fw-semibold small">Linked School Year</label>
+                <select class="form-select" id="registration-school-year-select" ${disabled}>
+                    <option value="">Select school year</option>
+                    ${options}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-semibold small">Close Registration</label>
+                <input type="datetime-local" class="form-control" id="registration-closes-input" value="${deadline}" ${disabled}>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" id="registration-enabled-input" ${registration?.registration_enabled || el.registration_enabled ? 'checked' : ''} ${disabled}>
+                    <label class="form-check-label small" for="registration-enabled-input">Enabled</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-grid gap-2">
+                ${canEdit ? `<button class="btn btn-cems-outline" onclick="saveElectionRegistrationSettings()"><i class="bi bi-check2-circle me-1"></i>Save</button>` : ''}
+                ${finalizeBtn}
+            </div>
+        </div>
+    </div>`;
+}
+
+async function saveElectionRegistrationSettings() {
+    const el = currentElectionDetail;
+    if (!el) return;
+    const deadlineValue = document.getElementById('registration-closes-input')?.value || '';
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/${el.id}/registration/settings/`, {
+            school_year_id: document.getElementById('registration-school-year-select')?.value || '',
+            registration_enabled: document.getElementById('registration-enabled-input')?.checked || false,
+            registration_closes_at: datetimeLocalToIso(deadlineValue),
+        });
+        if (res.success) {
+            currentElectionDetail = res.election;
+            CEMS.showToast('Registration settings saved.', 'success');
+            await openElection(el.id);
+            switchTab('voterroll');
+        } else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
 async function renderVoterRoll() {
     const el = currentElectionDetail;
     const isDraft = el.status === 'draft';
@@ -1558,11 +1848,37 @@ async function renderVoterRoll() {
 
         const ms = res.match_summary || {};
         const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '—';
+        let registrationSummary = {
+            registration_enabled: el.registration_enabled,
+            registration_open: false,
+            registration_closed_reason: '',
+            school_year_id: el.school_year_id || null,
+            school_year_name: el.school_year_name || '',
+            registration_closes_at: el.registration_closes_at || null,
+            approved: 0,
+            eligible_voters: res.approved_count || 0,
+        };
+        let registrationSchoolYears = [];
+        try {
+            const [registrationRes, schoolYearsRes] = await Promise.all([
+                CEMS.api(`/api/admin/elections/setup/${el.id}/registration/summary/`),
+                CEMS.api('/api/admin/elections/setup/school-years/'),
+            ]);
+            if (registrationRes.success) registrationSummary = registrationRes.registration;
+            if (schoolYearsRes.success) registrationSchoolYears = schoolYearsRes.school_years || [];
+        } catch (summaryErr) {
+            console.warn('Registration summary unavailable', summaryErr);
+        }
+        const hasWebEligible = (registrationSummary.approved || 0) > 0 || (registrationSummary.eligible_voters || 0) > 0;
         let html = '';
 
         // ── Finalized banner ──────────────────────────────────────────────
         if (res.finalized) {
             html += `<div class="vr-finalized-banner mb-4"><i class="bi bi-shield-check-fill"></i> Voter roll finalized by <strong>${esc(res.finalized_by||'')}</strong> on ${fmtDateTime(res.finalized_at)}</div>`;
+        }
+
+        if (isDraft || registrationSummary.school_year_id || registrationSummary.total > 0) {
+            html += renderRegistrationWorkflowCard(el, registrationSummary, registrationSchoolYears, canEdit, canFinalize, res);
         }
 
         // ── Setup Pipeline ────────────────────────────────────────────────
@@ -1598,7 +1914,9 @@ async function renderVoterRoll() {
                   ok: false },
             ];
 
-            html += `<div class="vr-pipeline mb-4">`;
+            html += hasWebEligible
+                ? `<details class="csv-fallback mb-4"><summary><i class="bi bi-file-earmark-spreadsheet me-1"></i>CSV import fallback</summary><div class="vr-pipeline mt-3">`
+                : `<div class="vr-pipeline mb-4">`;
             steps.forEach((s, i) => {
                 const state = s.ok ? 'done' : (s.n === currentStep ? 'current' : 'pending');
                 html += `<div class="vr-step ${state}">
@@ -1612,15 +1930,15 @@ async function renderVoterRoll() {
                 </div>`;
                 if (i < steps.length - 1) html += `<div class="vr-step-connector ${s.ok ? 'done' : ''}"></div>`;
             });
-            html += `</div>`;
+            html += hasWebEligible ? `</div></details>` : `</div>`;
         }
 
         // ── Metrics row ───────────────────────────────────────────────────
         html += `<div class="row g-3 mb-4">
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Total Imported</div><div class="metric-value" style="color:var(--cems-primary)">${(ms.total||0).toLocaleString()}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Matched</div><div class="metric-value">${(ms.matched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.matched,ms.total)}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Unmatched</div><div class="metric-value" style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.unmatched,ms.total)}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved</div><div class="metric-value" style="color:var(--cems-success)">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">${pct(res.approved_count,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">CSV Imported</div><div class="metric-value" style="color:var(--cems-primary)">${(ms.total||0).toLocaleString()}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">CSV Matched</div><div class="metric-value">${(ms.matched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.matched,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">CSV Unmatched</div><div class="metric-value" style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.unmatched,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Eligible Voters</div><div class="metric-value" style="color:var(--cems-success)">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">${hasWebEligible ? 'web or CSV source' : pct(res.approved_count,ms.total)}</div></div></div>
         </div>`;
 
         // ── College breakdown ──────────────────────────────────────────────
@@ -1671,7 +1989,7 @@ async function renderVoterRoll() {
                 html += `<p class="text-muted mt-2 mb-0" style="font-size:0.8rem">Showing ${res.unmatched_records.length} of ${res.unmatched_total} unmatched records.</p>`;
             html += '</div>';
         } else if ((ms.total||0) === 0) {
-            html += `<div class="empty-state mt-2"><i class="bi bi-people"></i><p>No verification records imported yet.<br><small class="text-muted">Use the pipeline above to get started.</small></p></div>`;
+            html += `<div class="empty-state mt-2"><i class="bi bi-people"></i><p>No eligible voters yet.<br><small class="text-muted">Open web registration or use the CSV fallback.</small></p></div>`;
         }
 
         document.getElementById('tab-voterroll').innerHTML = html;
@@ -2105,6 +2423,14 @@ function showAddCandidateModal(posId) {
         }
     }
 
+    if (posId) {
+        const scopedPos = currentElectionDetail.positions.find(p => p.id === posId);
+        if (scopedPos && scopedPos.category === 'house_college' && scopedPos.scope_college) {
+            collegeInput.value = scopedPos.scope_college;
+            collegeInput.readOnly = true;
+        }
+    }
+
     new bootstrap.Modal(document.getElementById('addCandidateModal')).show();
 }
 async function submitAddCandidate() {
@@ -2248,10 +2574,8 @@ function finalizeVoterRoll() {
 // ══════════════════════════════════════════════════════════════════════════
 let batchList = [];
 async function showBatchesView() {
-    document.getElementById('view-election-list').classList.add('d-none');
-    document.getElementById('view-election-detail').classList.add('d-none');
+    hideAdminViews();
     document.getElementById('view-batches').classList.remove('d-none');
-    document.getElementById('view-colleges').classList.add('d-none');
     try {
         const res = await CEMS.api('/api/admin/elections/setup/registrar-batches/');
         batchList = res.batches || [];
@@ -2397,6 +2721,257 @@ async function assignBatch(batchId) {
 // ══════════════════════════════════════════════════════════════════════════
 //  CONFIRM MODAL
 // ══════════════════════════════════════════════════════════════════════════
+// =============================================================================
+//  SCHOOL-YEAR ROSTER
+// =============================================================================
+function schoolYearStatusBadge(status) {
+    return status === 'active'
+        ? '<span class="badge-status badge-active">Active</span>'
+        : '<span class="badge-status badge-closed">Archived</span>';
+}
+
+function currentSchoolYear() {
+    return schoolYearList.find(sy => sy.id === selectedSchoolYearId) || null;
+}
+
+async function showSchoolYearsView() {
+    hideAdminViews();
+    document.getElementById('view-school-years').classList.remove('d-none');
+    await loadSchoolYears();
+}
+
+async function loadSchoolYears() {
+    try {
+        const res = await CEMS.api('/api/admin/elections/setup/school-years/');
+        if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
+        schoolYearList = res.school_years || [];
+        if (!schoolYearList.some(sy => sy.id === selectedSchoolYearId)) {
+            selectedSchoolYearId = (schoolYearList.find(sy => sy.status === 'active') || schoolYearList[0] || {}).id || null;
+        }
+        renderSchoolYears();
+        await loadEnrollments();
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+function renderSchoolYears() {
+    const body = document.getElementById('school-year-list');
+    if (!schoolYearList.length) {
+        body.innerHTML = '<div class="empty-state"><i class="bi bi-calendar2-week"></i><p>No school years yet</p></div>';
+        return;
+    }
+    body.innerHTML = schoolYearList.map(sy => {
+        const selected = sy.id === selectedSchoolYearId ? 'active' : '';
+        const activateBtn = sy.status !== 'active'
+            ? `<button class="btn btn-sm btn-cems-outline" onclick="activateSchoolYear('${sy.id}')"><i class="bi bi-check2-circle"></i></button>`
+            : '';
+        const archiveBtn = sy.status !== 'archived'
+            ? `<button class="btn btn-sm btn-outline-danger" onclick="archiveSchoolYear('${sy.id}', '${esc(sy.name).replace(/'/g,"\\'")}')"><i class="bi bi-archive"></i></button>`
+            : '';
+        return `<div class="roster-list-item ${selected}" onclick="selectSchoolYear('${sy.id}')">
+            <div class="min-w-0">
+                <div class="fw-semibold text-truncate">${esc(sy.name)}</div>
+                <div class="small text-muted">${esc(sy.academic_year || '')}</div>
+                <div class="mt-2">${schoolYearStatusBadge(sy.status)}</div>
+            </div>
+            <div class="d-flex gap-1 flex-shrink-0" onclick="event.stopPropagation()">
+                ${activateBtn}
+                ${archiveBtn}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function selectSchoolYear(schoolYearId) {
+    selectedSchoolYearId = schoolYearId;
+    renderSchoolYears();
+    await loadEnrollments();
+}
+
+function showCreateSchoolYearModal() {
+    document.getElementById('school-year-name-input').value = '';
+    document.getElementById('school-year-academic-input').value = '';
+    document.getElementById('school-year-active-input').checked = true;
+    new bootstrap.Modal(document.getElementById('createSchoolYearModal')).show();
+}
+
+async function submitSchoolYearForm() {
+    const name = document.getElementById('school-year-name-input').value.trim();
+    const academicYear = document.getElementById('school-year-academic-input').value.trim();
+    if (!name || !academicYear) { CEMS.showToast('Name and academic year are required.', 'warning'); return; }
+    try {
+        const res = await apiPost('/api/admin/elections/setup/school-years/create/', {
+            name,
+            academic_year: academicYear,
+            activate: document.getElementById('school-year-active-input').checked,
+        });
+        if (res.success) {
+            selectedSchoolYearId = res.school_year.id;
+            CEMS.showToast('School year created.', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('createSchoolYearModal')).hide();
+            await loadSchoolYears();
+        } else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+async function activateSchoolYear(schoolYearId) {
+    try {
+        const res = await apiPost(`/api/admin/elections/setup/school-years/${schoolYearId}/activate/`, {});
+        if (res.success) {
+            selectedSchoolYearId = res.school_year.id;
+            CEMS.showToast('School year activated.', 'success');
+            await loadSchoolYears();
+        } else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+function archiveSchoolYear(schoolYearId, name) {
+    showConfirm('Archive School Year', `Archive <strong>${esc(name)}</strong>? Existing election records keep their snapshots.`, async () => {
+        try {
+            const res = await apiPost(`/api/admin/elections/setup/school-years/${schoolYearId}/archive/`, {});
+            if (res.success) {
+                CEMS.showToast('School year archived.', 'success');
+                await loadSchoolYears();
+            } else CEMS.showToast(res.error, 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    });
+}
+
+async function loadEnrollments() {
+    const year = currentSchoolYear();
+    const list = document.getElementById('enrollment-list');
+    const title = document.getElementById('enrollment-panel-title');
+    const subtitle = document.getElementById('enrollment-panel-subtitle');
+    if (!year) {
+        enrollmentList = [];
+        title.textContent = 'Enrollment Roster';
+        subtitle.textContent = 'Create a school year first.';
+        list.innerHTML = '<div class="empty-state"><i class="bi bi-person-vcard"></i><p>No school year selected</p></div>';
+        return;
+    }
+    title.textContent = year.name;
+    const status = document.getElementById('enrollment-status-filter')?.value || '';
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    try {
+        const res = await CEMS.api(`/api/admin/elections/setup/school-years/${year.id}/enrollments/${query}`);
+        if (!res.success) { CEMS.showToast(res.error, 'danger'); return; }
+        enrollmentList = res.enrollments || [];
+        subtitle.textContent = `${(res.total || 0).toLocaleString()} roster record${res.total === 1 ? '' : 's'} shown by student ID`;
+        renderEnrollments(res.total || 0);
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+function renderEnrollments(total) {
+    const body = document.getElementById('enrollment-list');
+    if (!enrollmentList.length) {
+        body.innerHTML = '<div class="empty-state"><i class="bi bi-person-lines-fill"></i><p>No enrollment records for this filter</p></div>';
+        return;
+    }
+    const rows = enrollmentList.map(en => {
+        const badge = en.status === 'active'
+            ? '<span class="badge-status badge-active">Active</span>'
+            : '<span class="badge-status badge-closed">Inactive</span>';
+        const deactivateBtn = en.status === 'active'
+            ? `<button class="btn btn-sm btn-outline-danger" onclick="deactivateEnrollment('${en.id}', '${esc(en.full_name).replace(/'/g,"\\'")}')"><i class="bi bi-person-dash"></i></button>`
+            : '';
+        return `<tr>
+            <td><code>${esc(en.student_id)}</code></td>
+            <td><strong>${esc(en.full_name)}</strong><div class="small text-muted">${esc(en.course || '')}</div></td>
+            <td>${esc(en.college || '')}</td>
+            <td class="text-center">${esc(en.year_level)}</td>
+            <td>${badge}</td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-cems-outline" onclick="showEnrollmentModal('${en.id}')"><i class="bi bi-pencil"></i></button>
+                ${deactivateBtn}
+            </td>
+        </tr>`;
+    }).join('');
+    const more = total > enrollmentList.length
+        ? `<div class="small text-muted mt-2">Showing ${enrollmentList.length.toLocaleString()} of ${total.toLocaleString()} records.</div>`
+        : '';
+    body.innerHTML = `<div class="table-responsive">
+        <table class="cems-table roster-table">
+            <thead><tr><th>Student ID</th><th>Name</th><th>College</th><th class="text-center">Year</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    </div>${more}`;
+}
+
+async function ensureCollegeList() {
+    if (collegeList.length) return;
+    const res = await CEMS.api('/api/admin/elections/setup/colleges/');
+    if (res.success) collegeList = res.colleges || [];
+}
+
+async function fillEnrollmentCollegeOptions(selectedCollege = '') {
+    await ensureCollegeList();
+    const select = document.getElementById('enrollment-college-input');
+    if (!collegeList.length) {
+        select.innerHTML = `<option value="${esc(selectedCollege)}">${esc(selectedCollege || 'No colleges configured')}</option>`;
+        return;
+    }
+    const active = collegeList.filter(c => c.is_active);
+    const options = active.map(c => `<option value="${esc(c.name)}" ${c.name === selectedCollege ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    select.innerHTML = `<option value="">Select college</option>${options}`;
+}
+
+async function showEnrollmentModal(enrollmentId = '') {
+    const year = currentSchoolYear();
+    if (!year) { CEMS.showToast('Create or select a school year first.', 'warning'); return; }
+    const enrollment = enrollmentId ? enrollmentList.find(en => en.id === enrollmentId) : null;
+    document.getElementById('enrollment-modal-title').textContent = enrollment ? 'Edit Student Enrollment' : 'Add Student Enrollment';
+    document.getElementById('enrollment-edit-id').value = enrollment?.id || '';
+    document.getElementById('enrollment-student-id-input').value = enrollment?.student_id || '';
+    document.getElementById('enrollment-name-input').value = enrollment?.full_name || '';
+    document.getElementById('enrollment-dob-input').value = fmtDateInput(enrollment?.date_of_birth);
+    document.getElementById('enrollment-course-input').value = enrollment?.course || '';
+    document.getElementById('enrollment-year-input').value = enrollment?.year_level || 1;
+    document.getElementById('enrollment-status-input').value = enrollment?.status || 'active';
+    await fillEnrollmentCollegeOptions(enrollment?.college || '');
+    new bootstrap.Modal(document.getElementById('enrollmentModal')).show();
+}
+
+async function submitEnrollmentForm() {
+    const year = currentSchoolYear();
+    if (!year) { CEMS.showToast('Select a school year first.', 'warning'); return; }
+    const id = document.getElementById('enrollment-edit-id').value;
+    const body = {
+        student_id: document.getElementById('enrollment-student-id-input').value.trim(),
+        full_name: document.getElementById('enrollment-name-input').value.trim(),
+        date_of_birth: document.getElementById('enrollment-dob-input').value,
+        college: document.getElementById('enrollment-college-input').value,
+        course: document.getElementById('enrollment-course-input').value.trim(),
+        year_level: document.getElementById('enrollment-year-input').value,
+        status: document.getElementById('enrollment-status-input').value,
+    };
+    if (!body.student_id || !body.full_name || !body.date_of_birth || !body.college || !body.course) {
+        CEMS.showToast('Complete the required enrollment fields.', 'warning');
+        return;
+    }
+    try {
+        const url = id
+            ? `/api/admin/elections/setup/enrollments/${id}/update/`
+            : `/api/admin/elections/setup/school-years/${year.id}/enrollments/create/`;
+        const res = await apiPost(url, body);
+        if (res.success) {
+            CEMS.showToast(id ? 'Enrollment updated.' : 'Enrollment added.', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('enrollmentModal')).hide();
+            await loadEnrollments();
+        } else CEMS.showToast(res.error, 'danger');
+    } catch (err) { CEMS.showToast(err.message, 'danger'); }
+}
+
+function deactivateEnrollment(enrollmentId, name) {
+    showConfirm('Deactivate Enrollment', `Deactivate <strong>${esc(name)}</strong> for this school year?`, async () => {
+        try {
+            const res = await apiPost(`/api/admin/elections/setup/enrollments/${enrollmentId}/deactivate/`, {});
+            if (res.success) {
+                CEMS.showToast('Enrollment deactivated.', 'success');
+                await loadEnrollments();
+            } else CEMS.showToast(res.error, 'danger');
+        } catch (err) { CEMS.showToast(err.message, 'danger'); }
+    });
+}
+
 function showConfirm(title, message, onConfirm) {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').innerHTML = message;
@@ -2412,9 +2987,7 @@ function showConfirm(title, message, onConfirm) {
 let collegeList = [];
 
 async function showCollegesView() {
-    document.getElementById('view-election-list').classList.add('d-none');
-    document.getElementById('view-election-detail').classList.add('d-none');
-    document.getElementById('view-batches').classList.add('d-none');
+    hideAdminViews();
     document.getElementById('view-colleges').classList.remove('d-none');
     await loadColleges();
 }

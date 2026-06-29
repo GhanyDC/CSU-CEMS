@@ -25,6 +25,7 @@ urlpatterns: list = [
     # API endpoints — student auth
     path("api/auth/", include("apps.accounts.urls", namespace="accounts")),
     path("api/elections/", include("apps.elections.urls", namespace="elections")),
+    path("api/registration/", include("apps.elections.registration_urls", namespace="registration")),
     path("api/voting/", include("apps.voting.urls", namespace="voting")),
     # API endpoints — admin auth
     path("api/admin/auth/", include((admin_auth_urlpatterns, "admin_auth"))),
