@@ -39,6 +39,9 @@ templates/     HTML templates
 
 ## Quick Start
 
+For school-hosted deployment, local verification, backups, and operating notes,
+read [docs/ON_PREM_DEPLOYMENT.md](docs/ON_PREM_DEPLOYMENT.md).
+
 1. Copy the environment template:
 
 ```powershell
