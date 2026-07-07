@@ -873,7 +873,6 @@ class WebVoterRegistrationService:
         election = (
             Election.objects
             .select_for_update()
-            .select_related("school_year")
             .get(pk=election.pk)
         )
         enrollment = WebVoterRegistrationService._ensure_can_register(
@@ -999,6 +998,10 @@ class VoterRollService:
             Summary dict: {created, skipped_duplicate, matched, unmatched}.
         """
         from apps.accounts.models import Student
+
+        # Always fetch a fresh, locked row so the guard cannot be bypassed
+        # by passing a stale in-memory Election object.
+        election = Election.objects.select_for_update().get(pk=election.pk)
 
         if election.is_voter_roll_finalized:
             raise VoterRollError("Cannot import: voter roll is already finalized.")
