@@ -10,6 +10,7 @@ from apps.elections.models import (
     OnsiteParticipation,
     OnsiteTally,
     Position,
+    RegistrarRecord,
     SchoolYear,
     VoterRegistration,
     VerificationRecord,
@@ -80,6 +81,15 @@ class VerificationRecordAdmin(admin.ModelAdmin):
     ordering = ("-imported_at",)
 
 
+@admin.register(RegistrarRecord)
+class RegistrarRecordAdmin(admin.ModelAdmin):
+    list_display = ("student_identifier", "full_name", "batch", "college", "course", "year_level", "status")
+    list_filter = ("batch", "status", "college")
+    search_fields = ("student_identifier", "full_name", "student__student_id", "batch__name")
+    readonly_fields = ("id", "created_at", "updated_at")
+    ordering = ("batch", "student_identifier")
+
+
 @admin.register(SchoolYear)
 class SchoolYearAdmin(admin.ModelAdmin):
     list_display = ("name", "academic_year", "status", "created_at")
@@ -100,8 +110,8 @@ class EnrollmentRecordAdmin(admin.ModelAdmin):
 
 @admin.register(VoterRegistration)
 class VoterRegistrationAdmin(admin.ModelAdmin):
-    list_display = ("student", "election", "status", "source", "college_snapshot", "requested_at", "decided_at")
-    list_filter = ("status", "source", "election", "college_snapshot")
+    list_display = ("student", "election", "status", "source", "college_snapshot", "registrar_record", "requested_at", "decided_at")
+    list_filter = ("status", "source", "election", "college_snapshot", "registrar_record__batch")
     search_fields = ("student__student_id", "student__full_name", "election__name")
     readonly_fields = ("id", "requested_at")
     ordering = ("-requested_at",)

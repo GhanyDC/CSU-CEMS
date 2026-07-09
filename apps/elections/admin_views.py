@@ -120,7 +120,7 @@ def _coerce_bool(value) -> bool:
 def _get_election_or_404(election_id):
     """Fetch election by UUID. Returns (election, error_response)."""
     try:
-        return Election.objects.get(pk=election_id), None
+        return Election.objects.select_related("registrar_batch").get(pk=election_id), None
     except (Election.DoesNotExist, ValueError, ValidationError):
         return None, JsonResponse(
             {"success": False, "error": "Election not found."},
@@ -182,8 +182,9 @@ def _serialize_election_summary(election):
         "voter_roll_finalized": election.is_voter_roll_finalized,
         "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
         "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
-        "school_year_id": str(election.school_year_id) if election.school_year_id else None,
-        "school_year_name": election.school_year.name if election.school_year_id else None,
+        "registrar_batch_academic_year": election.registrar_batch.academic_year if election.registrar_batch_id else "",
+        "school_year_id": None,
+        "school_year_name": "",
         "registration_enabled": election.registration_enabled,
         "registration_closes_at": (
             election.registration_closes_at.isoformat()
@@ -259,8 +260,9 @@ def _serialize_election_detail(election):
         ),
         "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
         "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else None,
-        "school_year_id": str(election.school_year_id) if election.school_year_id else None,
-        "school_year_name": election.school_year.name if election.school_year_id else None,
+        "registrar_batch_academic_year": election.registrar_batch.academic_year if election.registrar_batch_id else "",
+        "school_year_id": None,
+        "school_year_name": "",
         "registration_enabled": election.registration_enabled,
         "registration_closes_at": (
             election.registration_closes_at.isoformat()
@@ -303,7 +305,7 @@ def list_elections(request):
 
     Returns all elections ordered by creation date.
     """
-    elections = Election.objects.all().order_by("-created_at")
+    elections = Election.objects.select_related("registrar_batch").all().order_by("-created_at")
     return JsonResponse({
         "success": True,
         "elections": [_serialize_election_summary(e) for e in elections],
@@ -1575,11 +1577,16 @@ def update_registration_settings(request, election_id):
     if err:
         return err
 
-    school_year = None
-    if "school_year_id" in data and data.get("school_year_id"):
-        school_year, err = _get_school_year_or_404(data.get("school_year_id"))
-        if err:
-            return err
+    registrar_batch = None
+    batch_id = data.get("registrar_batch_id") or data.get("batch_id")
+    if batch_id:
+        try:
+            registrar_batch = RegistrarImportBatch.objects.get(pk=batch_id)
+        except (RegistrarImportBatch.DoesNotExist, ValueError, ValidationError):
+            return JsonResponse(
+                {"success": False, "error": "Registrar batch not found."},
+                status=404,
+            )
 
     registration_closes_at = None
     clear_registration_closes_at = False
@@ -1598,7 +1605,7 @@ def update_registration_settings(request, election_id):
     try:
         election = ElectionSetupService.update_draft_election_registration_settings(
             election,
-            school_year=school_year,
+            registrar_batch=registrar_batch,
             registration_enabled=(
                 _coerce_bool(data["registration_enabled"])
                 if "registration_enabled" in data
@@ -1736,9 +1743,11 @@ def import_registrar_batch(request, batch_id):
     if err_resp:
         return err_resp
 
-    if "student_id" not in (rows[0].keys() if rows else []):
+    required_columns = {"student_id", "full_name", "date_of_birth", "college", "course", "year"}
+    missing_columns = required_columns - set(rows[0].keys() if rows else [])
+    if missing_columns:
         return JsonResponse(
-            {"success": False, "error": "CSV must have a 'student_id' column."},
+            {"success": False, "error": f"CSV is missing required column(s): {', '.join(sorted(missing_columns))}."},
             status=400,
         )
 
@@ -1750,8 +1759,8 @@ def import_registrar_batch(request, batch_id):
     return JsonResponse({
         "success": True,
         "message": (
-            f"Import complete: {summary['created']} created, "
-            f"{summary['updated']} updated, {summary['skipped']} skipped."
+            f"Import complete: {summary['records_created']} batch records created, "
+            f"{summary['records_updated']} updated, {summary['skipped']} skipped."
         ),
         "summary": summary,
     })

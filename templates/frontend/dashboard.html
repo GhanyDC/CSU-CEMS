@@ -85,6 +85,36 @@
     document.getElementById('welcome-name').textContent = user.full_name || user.student_id;
     if (user.college) document.getElementById('welcome-college').textContent = user.college;
 
+    const DASHBOARD_LIVE_REFRESH_MS = 10000;
+    let dashboardRefreshTimer = null;
+    let dashboardRefreshInFlight = false;
+    let dashboardRefreshSeq = 0;
+    let dashboardRefreshWarned = false;
+
+    function stopDashboardLiveRefresh() {
+        if (dashboardRefreshTimer) {
+            clearInterval(dashboardRefreshTimer);
+            dashboardRefreshTimer = null;
+        }
+    }
+
+    function startDashboardLiveRefresh() {
+        stopDashboardLiveRefresh();
+        if (document.hidden) return;
+        dashboardRefreshTimer = setInterval(() => {
+            loadDashboardData({ silent: true });
+        }, DASHBOARD_LIVE_REFRESH_MS);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopDashboardLiveRefresh();
+        } else {
+            loadDashboardData({ silent: true, force: true });
+            startDashboardLiveRefresh();
+        }
+    });
+
     function renderRegistrationList(registrations) {
         const container = document.getElementById('registration-list');
         if (!container) return;
@@ -103,6 +133,7 @@
         for (const e of registrations) {
             const typeLabel = e.election_type === 'campus' ? 'Campus Election' : `College &middot; ${CEMS.escapeHtml(e.college || '')}`;
             const deadline = e.registration_closes_at ? new Date(e.registration_closes_at).toLocaleString() : 'No deadline set';
+            const batchLabel = e.registrar_batch_name || e.registrar_batch_academic_year || e.school_year || '';
             const action = e.registered
                 ? '<span class="badge-status badge-active"><i class="bi bi-check-lg"></i> Registered</span>'
                 : `<button class="btn btn-cems-primary btn-sm" onclick="registerForElection('${e.id}', this)"><i class="bi bi-person-plus"></i> Register</button>`;
@@ -115,7 +146,7 @@
                         </div>
                         <span class="card-type">${typeLabel}</span>
                         <div class="metric-sub mt-1">
-                            <i class="bi bi-calendar3"></i> ${CEMS.escapeHtml(e.school_year || '')}
+                            <i class="bi bi-database"></i> ${CEMS.escapeHtml(batchLabel)}
                             <span class="mx-1">&middot;</span>
                             <i class="bi bi-clock"></i> ${CEMS.escapeHtml(deadline)}
                         </div>
@@ -137,7 +168,8 @@
             const res = await CEMS.api(`/api/registration/elections/${electionId}/register/`, { method: 'POST', body: '{}' });
             if (!res.success) throw new Error(res.error || 'Registration failed.');
             CEMS.showToast('Registration approved. You are now on the voter roll.', 'success');
-            setTimeout(function() { window.location.reload(); }, 800);
+            await loadDashboardData({ silent: true, force: true });
+            startDashboardLiveRefresh();
         } catch (err) {
             CEMS.showToast(err.message || 'Registration failed.', 'danger');
             if (button) {
@@ -147,12 +179,22 @@
         }
     };
 
-    // Fetch eligible elections via the /api/elections/mine/ endpoint
-    try {
+    async function loadDashboardData(options = {}) {
+        const silent = !!options.silent;
+        const force = !!options.force;
+        if (dashboardRefreshInFlight && !force) return;
+        dashboardRefreshInFlight = true;
+        const requestSeq = ++dashboardRefreshSeq;
+
+        try {
         const registrationData = await CEMS.api('/api/registration/available/');
-        renderRegistrationList(registrationData.elections || []);
+        if (registrationData.success === false) throw new Error(registrationData.error || 'Registration data unavailable.');
 
         const data = await CEMS.api('/api/elections/mine/');
+        if (data.success === false) throw new Error(data.error || 'Election data unavailable.');
+        if (requestSeq !== dashboardRefreshSeq) return;
+
+        renderRegistrationList(registrationData.elections || []);
         const elections = data.elections || [];
 
         const activeElections = elections.filter(e => e.status === 'active');
@@ -281,14 +323,26 @@
             infoContainer.innerHTML = '<p class="text-muted">No election information available.</p>';
         }
 
+            dashboardRefreshWarned = false;
     } catch (err) {
-        if (err.message && err.message.includes('401')) {
+        const message = err.message || '';
+        if (message.includes('401') || message.toLowerCase().includes('authentication')) {
+            stopDashboardLiveRefresh();
             CEMS.showToast('Session expired. Please log in again.', 'danger');
             setTimeout(function() { window.location.href = '/'; }, 1500);
+        } else if (silent) {
+            if (!dashboardRefreshWarned) console.warn('Dashboard live refresh failed', err);
+            dashboardRefreshWarned = true;
         } else {
-            CEMS.showToast('Error loading dashboard: ' + (err.message || 'Unknown error'), 'danger');
+            CEMS.showToast('Error loading dashboard: ' + (message || 'Unknown error'), 'danger');
         }
+    } finally {
+        dashboardRefreshInFlight = false;
     }
+    }
+
+    await loadDashboardData();
+    startDashboardLiveRefresh();
 })();
 </script>
 {% endblock %}

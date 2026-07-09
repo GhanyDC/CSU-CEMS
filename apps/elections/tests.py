@@ -12,12 +12,12 @@ from apps.accounts.models import AdminProfile, AdminRole, Student
 from apps.elections.hybrid_services import HybridElectionError, HybridElectionService
 from apps.elections.models import (
     Candidate,
-    EnrollmentRecord,
     Election,
     EligibleVoter,
     HybridImportBatch,
     Position,
-    SchoolYear,
+    RegistrarImportBatch,
+    RegistrarRecord,
     VoterRegistration,
 )
 from apps.elections.services import (
@@ -237,10 +237,10 @@ class ElectionLifecycleReadinessRegressionTests(TestCase):
 class WebVoterRegistrationTests(TestCase):
     def setUp(self):
         now = timezone.now()
-        self.school_year = SchoolYear.objects.create(
+        self.registrar_batch = RegistrarImportBatch.objects.create(
             name="AY 2026-2027",
             academic_year="2026-2027",
-            status=SchoolYear.Status.ACTIVE,
+            status=RegistrarImportBatch.Status.ACTIVE,
         )
         self.hss_student = Student.objects.create(
             student_id="HSS-REG-001",
@@ -267,8 +267,8 @@ class WebVoterRegistrationTests(TestCase):
             year=2,
         )
         for student in (self.hss_student, self.cics_student):
-            EnrollmentRecord.objects.create(
-                school_year=self.school_year,
+            RegistrarRecord.objects.create(
+                batch=self.registrar_batch,
                 student=student,
                 student_identifier=student.student_id,
                 full_name=student.full_name,
@@ -276,10 +276,10 @@ class WebVoterRegistrationTests(TestCase):
                 college=student.college,
                 course=student.course,
                 year_level=student.year,
-                status=EnrollmentRecord.Status.ACTIVE,
+                status=RegistrarRecord.Status.ACTIVE,
             )
-        self.inactive_enrollment = EnrollmentRecord.objects.create(
-            school_year=self.school_year,
+        self.inactive_record = RegistrarRecord.objects.create(
+            batch=self.registrar_batch,
             student=self.inactive_student,
             student_identifier=self.inactive_student.student_id,
             full_name=self.inactive_student.full_name,
@@ -287,12 +287,12 @@ class WebVoterRegistrationTests(TestCase):
             college=self.inactive_student.college,
             course=self.inactive_student.course,
             year_level=self.inactive_student.year,
-            status=EnrollmentRecord.Status.INACTIVE,
+            status=RegistrarRecord.Status.INACTIVE,
         )
         self.campus_election = Election.objects.create(
             name="Campus Registration Election",
             election_type=Election.ElectionType.CAMPUS,
-            school_year=self.school_year,
+            registrar_batch=self.registrar_batch,
             registration_enabled=True,
             start_time=now + timedelta(days=1),
             end_time=now + timedelta(days=2),
@@ -302,7 +302,7 @@ class WebVoterRegistrationTests(TestCase):
             name="HSS Registration Election",
             election_type=Election.ElectionType.COLLEGE,
             college="College of Humanities and Social Sciences",
-            school_year=self.school_year,
+            registrar_batch=self.registrar_batch,
             registration_enabled=True,
             start_time=now + timedelta(days=1),
             end_time=now + timedelta(days=2),
@@ -423,7 +423,7 @@ class WebVoterRegistrationTests(TestCase):
         disabled = Election.objects.create(
             name="Disabled Registration",
             election_type=Election.ElectionType.CAMPUS,
-            school_year=self.school_year,
+            registrar_batch=self.registrar_batch,
             registration_enabled=False,
             start_time=timezone.now() + timedelta(days=1),
             end_time=timezone.now() + timedelta(days=2),
@@ -432,7 +432,7 @@ class WebVoterRegistrationTests(TestCase):
         finalized = Election.objects.create(
             name="Finalized Registration",
             election_type=Election.ElectionType.CAMPUS,
-            school_year=self.school_year,
+            registrar_batch=self.registrar_batch,
             registration_enabled=True,
             start_time=timezone.now() + timedelta(days=1),
             end_time=timezone.now() + timedelta(days=2),
@@ -443,7 +443,7 @@ class WebVoterRegistrationTests(TestCase):
         active = Election.objects.create(
             name="Active Registration",
             election_type=Election.ElectionType.CAMPUS,
-            school_year=self.school_year,
+            registrar_batch=self.registrar_batch,
             registration_enabled=True,
             start_time=timezone.now() - timedelta(hours=1),
             end_time=timezone.now() + timedelta(hours=1),
@@ -495,7 +495,7 @@ class WebVoterRegistrationTests(TestCase):
             1,
         )
 
-    def test_readiness_accepts_finalized_web_registrations_and_flags_invalid_enrollment(self):
+    def test_readiness_accepts_finalized_web_registrations_and_flags_invalid_registrar_record(self):
         self._add_ready_position(self.campus_election)
         self._student_client(self.hss_student).post(
             f"/api/registration/elections/{self.campus_election.pk}/register/",
@@ -508,15 +508,15 @@ class WebVoterRegistrationTests(TestCase):
         ready_report = ReadinessService.check_readiness(self.campus_election)
         self.assertTrue(ready_report["ready"])
 
-        EnrollmentRecord.objects.filter(
-            school_year=self.school_year,
+        RegistrarRecord.objects.filter(
+            batch=self.registrar_batch,
             student=self.hss_student,
-        ).update(status=EnrollmentRecord.Status.INACTIVE)
+        ).update(status=RegistrarRecord.Status.INACTIVE)
 
         invalid_report = ReadinessService.check_readiness(self.campus_election)
         self.assertFalse(invalid_report["ready"])
         self.assertIn(
-            "Voter roll contains voters outside the linked school-year enrollment.",
+            "Voter roll contains voters outside the linked registrar batch.",
             invalid_report["blocking_issues"],
         )
 
@@ -545,45 +545,53 @@ class WebVoterRegistrationAdminApiTests(TestCase):
             status=Election.Status.DRAFT,
         )
 
-    def test_admin_can_create_roster_and_enable_registration(self):
-        school_year_response = self.client.post(
-            "/api/admin/elections/setup/school-years/create/",
+    def test_admin_can_create_registrar_batch_and_enable_registration(self):
+        batch_response = self.client.post(
+            "/api/admin/elections/setup/registrar-batches/create/",
             data=json.dumps({
                 "name": "AY 2027-2028",
                 "academic_year": "2027-2028",
-                "activate": True,
+                "description": "Test roster",
             }),
             content_type="application/json",
         )
-        self.assertEqual(school_year_response.status_code, 201)
-        school_year_id = school_year_response.json()["school_year"]["id"]
+        self.assertEqual(batch_response.status_code, 201)
+        batch_id = batch_response.json()["batch"]["id"]
 
-        enrollment_response = self.client.post(
-            f"/api/admin/elections/setup/school-years/{school_year_id}/enrollments/create/",
-            data=json.dumps({
-                "student_id": "WEB-ADMIN-001",
-                "full_name": "Web Admin Student",
-                "date_of_birth": "2002-03-04",
-                "college": "College of Humanities and Social Sciences",
-                "course": "BA Test",
-                "year_level": 1,
-            }),
-            content_type="application/json",
+        csv_file = SimpleUploadedFile(
+            "registrar.csv",
+            (
+                "student_id,full_name,date_of_birth,college,course,year\n"
+                "WEB-ADMIN-001,Web Admin Student,2002-03-04,"
+                "College of Humanities and Social Sciences,BA Test,1\n"
+            ).encode("utf-8"),
+            content_type="text/csv",
         )
-        self.assertEqual(enrollment_response.status_code, 201)
+        import_response = self.client.post(
+            f"/api/admin/elections/setup/registrar-batches/{batch_id}/import/",
+            data={"csv_file": csv_file},
+        )
+        self.assertEqual(import_response.status_code, 200)
         self.assertTrue(Student.objects.filter(student_id="WEB-ADMIN-001").exists())
+        self.assertTrue(
+            RegistrarRecord.objects.filter(
+                batch_id=batch_id,
+                student_identifier="WEB-ADMIN-001",
+                status=RegistrarRecord.Status.ACTIVE,
+            ).exists()
+        )
 
         settings_response = self.client.post(
             f"/api/admin/elections/setup/{self.election.pk}/registration/settings/",
             data=json.dumps({
-                "school_year_id": school_year_id,
+                "registrar_batch_id": batch_id,
                 "registration_enabled": True,
             }),
             content_type="application/json",
         )
         self.assertEqual(settings_response.status_code, 200)
         self.election.refresh_from_db()
-        self.assertEqual(str(self.election.school_year_id), school_year_id)
+        self.assertEqual(str(self.election.registrar_batch_id), batch_id)
         self.assertTrue(self.election.registration_enabled)
 
 

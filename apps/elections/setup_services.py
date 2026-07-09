@@ -13,11 +13,11 @@ from django.utils import timezone
 from apps.elections.constants import OFFICIAL_COLLEGES
 from apps.elections.models import (
     Candidate,
-    EnrollmentRecord,
     Election,
     EligibleVoter,
     Position,
-    SchoolYear,
+    RegistrarImportBatch,
+    RegistrarRecord,
     VoterRegistration,
     VerificationRecord,
 )
@@ -204,7 +204,7 @@ class ElectionSetupService:
     def update_draft_election_registration_settings(
         election: Election,
         *,
-        school_year: SchoolYear | None = None,
+        registrar_batch: RegistrarImportBatch | None = None,
         registration_enabled: bool | None = None,
         registration_closes_at=None,
         clear_registration_closes_at: bool = False,
@@ -220,15 +220,15 @@ class ElectionSetupService:
             )
 
         update_fields = []
-        if school_year is not None:
-            if school_year.status != SchoolYear.Status.ACTIVE:
-                raise ElectionSetupError("Only an active school year can be linked for registration.")
-            election.school_year = school_year
-            update_fields.append("school_year")
+        if registrar_batch is not None:
+            if registrar_batch.status != RegistrarImportBatch.Status.ACTIVE:
+                raise ElectionSetupError("Only an active registrar batch can be linked for registration.")
+            election.registrar_batch = registrar_batch
+            update_fields.append("registrar_batch")
 
         if registration_enabled is not None:
-            if registration_enabled and not (school_year or election.school_year_id):
-                raise ElectionSetupError("A school year is required before registration can be enabled.")
+            if registration_enabled and not (registrar_batch or election.registrar_batch_id):
+                raise ElectionSetupError("A registrar batch is required before registration can be enabled.")
             election.registration_enabled = bool(registration_enabled)
             update_fields.append("registration_enabled")
 
@@ -502,34 +502,37 @@ class ReadinessService:
         if voter_count == 0:
             blocking.append("Voter roll has not been generated.")
 
-        # 6. Registration school-year configuration is usable
+        # 6. Registration registrar-batch configuration is usable
         registration_config_ok = True
         registration_config_detail = "Not applicable"
         if election.registration_enabled:
-            registration_config_ok = bool(election.school_year_id)
-            registration_config_detail = (
-                f"Linked to {election.school_year.name}"
-                if election.school_year_id
-                else "Registration is enabled but no school year is linked"
+            registration_config_ok = bool(election.registrar_batch_id) and (
+                election.registrar_batch.status == RegistrarImportBatch.Status.ACTIVE
             )
+            if election.registrar_batch_id and registration_config_ok:
+                registration_config_detail = f"Linked to {election.registrar_batch.name}"
+            elif election.registrar_batch_id:
+                registration_config_detail = "Linked registrar batch is archived"
+            else:
+                registration_config_detail = "Registration is enabled but no registrar batch is linked"
         checks.append({
-            "name": "Registration school year configured",
+            "name": "Registration registrar batch configured",
             "passed": registration_config_ok,
             "detail": registration_config_detail,
         })
         if not registration_config_ok:
-            blocking.append("Web registration requires a linked school year.")
+            blocking.append("Web registration requires an active linked registrar batch.")
 
-        # 7. School-year voter roll is consistent
-        school_year_scope_ok = True
-        school_year_scope_detail = "Not applicable"
-        if election.school_year_id and voter_count > 0:
-            invalid_enrollments = []
-            enrollments = {
-                enrollment.student_identifier: enrollment
-                for enrollment in EnrollmentRecord.objects.filter(
-                    school_year=election.school_year,
-                    status=EnrollmentRecord.Status.ACTIVE,
+        # 7. Registrar-batch voter roll is consistent
+        batch_scope_ok = True
+        batch_scope_detail = "Not applicable"
+        if election.registrar_batch_id and voter_count > 0:
+            invalid_registrar_records = []
+            registrar_records = {
+                record.student_identifier: record
+                for record in RegistrarRecord.objects.filter(
+                    batch=election.registrar_batch,
+                    status=RegistrarRecord.Status.ACTIVE,
                 )
             }
             for ev in (
@@ -537,32 +540,32 @@ class ReadinessService:
                 .filter(election=election)
                 .select_related("student")
             ):
-                enrollment = enrollments.get(ev.student.student_id)
-                if enrollment is None:
-                    invalid_enrollments.append(ev.student.student_id)
+                registrar_record = registrar_records.get(ev.student.student_id)
+                if registrar_record is None:
+                    invalid_registrar_records.append(ev.student.student_id)
                     continue
-                if not college_matches(ev.college_snapshot, enrollment.college):
-                    invalid_enrollments.append(ev.student.student_id)
+                if not college_matches(ev.college_snapshot, registrar_record.college):
+                    invalid_registrar_records.append(ev.student.student_id)
 
-            school_year_scope_ok = not invalid_enrollments
-            school_year_scope_detail = (
-                "All eligible voters have active school-year enrollment"
-                if school_year_scope_ok
+            batch_scope_ok = not invalid_registrar_records
+            batch_scope_detail = (
+                "All eligible voters have active registrar batch records"
+                if batch_scope_ok
                 else (
-                    f"{len(invalid_enrollments)} eligible voter(s) lack matching "
-                    "active enrollment."
+                    f"{len(invalid_registrar_records)} eligible voter(s) lack matching "
+                    "active registrar batch records."
                 )
             )
-        elif election.school_year_id:
-            school_year_scope_detail = "No voter roll to check"
+        elif election.registrar_batch_id:
+            batch_scope_detail = "No voter roll to check"
 
         checks.append({
-            "name": "School-year enrollment scoped correctly",
-            "passed": school_year_scope_ok,
-            "detail": school_year_scope_detail,
+            "name": "Registrar batch voter roll scoped correctly",
+            "passed": batch_scope_ok,
+            "detail": batch_scope_detail,
         })
-        if not school_year_scope_ok:
-            blocking.append("Voter roll contains voters outside the linked school-year enrollment.")
+        if not batch_scope_ok:
+            blocking.append("Voter roll contains voters outside the linked registrar batch.")
 
         # 8. College-scoped voter roll is consistent
         voter_roll_scope_ok = True

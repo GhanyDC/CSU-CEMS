@@ -18,9 +18,9 @@
         </a>
         <div class="d-flex align-items-center gap-3">
             <span class="badge-role" id="nav-admin-role"></span>
-            <button class="btn btn-sm" id="nav-roster-btn" onclick="showSchoolYearsView()"
+            <button class="btn btn-sm" id="nav-roster-btn" onclick="showBatchesView()"
                 style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25);font-size:0.8rem">
-                <i class="bi bi-person-vcard"></i><span class="d-none d-sm-inline ms-1">Roster</span>
+                <i class="bi bi-database"></i><span class="d-none d-sm-inline ms-1">Roster</span>
             </button>
             <button class="btn btn-sm" id="nav-colleges-btn" onclick="showCollegesView()"
                 style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.25);font-size:0.8rem">
@@ -716,6 +716,11 @@ let currentTab = 'overview';
 let schoolYearList = [];
 let selectedSchoolYearId = null;
 let enrollmentList = [];
+const ADMIN_LIVE_REFRESH_MS = 5000;
+let adminLiveRefreshTimer = null;
+let adminLiveRefreshInFlight = false;
+let adminLiveRefreshSeq = 0;
+let adminLiveRefreshWarned = false;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 function esc(s) { return CEMS.escapeHtml(s); }
@@ -757,6 +762,70 @@ function setFileMeta(targetId, file, extraHtml = '') {
 }
 
 // ── Initialization ───────────────────────────────────────────────────────
+function formatLiveTime(date) {
+    return date ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : 'not updated yet';
+}
+function stopAdminLiveRefresh() {
+    if (adminLiveRefreshTimer) {
+        clearInterval(adminLiveRefreshTimer);
+        adminLiveRefreshTimer = null;
+    }
+}
+function adminLiveRefreshVisible() {
+    return (
+        !!currentElectionDetail &&
+        currentTab === 'voterroll' &&
+        !document.hidden &&
+        !document.getElementById('view-election-detail')?.classList.contains('d-none')
+    );
+}
+function adminVoterRollEditingActive() {
+    const active = document.activeElement;
+    const editingVoterRoll = !!(
+        active &&
+        active.closest('#tab-voterroll') &&
+        ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName)
+    );
+    return editingVoterRoll || !!document.querySelector('.modal.show');
+}
+function updateVoterRollLiveStatus(text, muted = true) {
+    const target = document.getElementById('voter-roll-live-status');
+    if (!target) return;
+    target.className = muted ? 'text-muted small' : 'small';
+    target.textContent = text;
+}
+function adminPayloadAuthFailed(data) {
+    const error = String(data?.error || '').toLowerCase();
+    return data && data.success === false && error.includes('authentication');
+}
+function handleAdminLiveAuthFailure(data) {
+    if (!adminPayloadAuthFailed(data)) return false;
+    stopAdminLiveRefresh();
+    window.location.href = '/election-admin/login/';
+    return true;
+}
+function renderVoterRollLiveHeader(updatedAt = null) {
+    return `<div class="d-flex align-items-center justify-content-end gap-2 mb-3 flex-wrap">
+        <span class="badge-status badge-active"><i class="bi bi-broadcast"></i> Live</span>
+        <span id="voter-roll-live-status" class="text-muted small">Updated ${formatLiveTime(updatedAt)}</span>
+    </div>`;
+}
+function startAdminLiveRefresh() {
+    stopAdminLiveRefresh();
+    if (!adminLiveRefreshVisible()) return;
+    adminLiveRefreshTimer = setInterval(() => {
+        renderVoterRoll({ live: true });
+    }, ADMIN_LIVE_REFRESH_MS);
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopAdminLiveRefresh();
+    } else if (adminLiveRefreshVisible()) {
+        renderVoterRoll({ live: true });
+        startAdminLiveRefresh();
+    }
+});
+
 function hideAdminViews() {
     ['view-election-list', 'view-election-detail', 'view-batches', 'view-school-years', 'view-colleges']
         .forEach(id => document.getElementById(id)?.classList.add('d-none'));
@@ -770,6 +839,7 @@ function hideAdminViews() {
     document.getElementById('nav-admin-role').textContent = adminUser.role_display;
 
     document.getElementById('admin-logout-btn').addEventListener('click', async () => {
+        stopAdminLiveRefresh();
         try { await CEMS.api('/api/admin/auth/logout/', { method: 'POST' }); } catch(e) {}
         window.location.href = '/election-admin/login/';
     });
@@ -785,6 +855,7 @@ function hideAdminViews() {
 //  ELECTION LIST
 // ══════════════════════════════════════════════════════════════════════════
 function showElectionList() {
+    stopAdminLiveRefresh();
     hideAdminViews();
     document.getElementById('view-election-list').classList.remove('d-none');
     currentElectionDetail = null;
@@ -806,7 +877,6 @@ function renderCreateButtons() {
     const canCreate = adminUser.is_eb_head || adminUser.is_operator;
     let html = '';
     if (canCreate) {
-        html += `<button class="btn btn-cems-outline btn-sm" onclick="showSchoolYearsView()"><i class="bi bi-person-vcard"></i> School-Year Roster</button>`;
         html += `<button class="btn btn-cems-outline btn-sm" onclick="showBatchesView()"><i class="bi bi-database"></i> Registrar Batches</button>`;
         html += `<button class="btn btn-cems-outline" onclick="showCreateCollegeModal()"><i class="bi bi-plus-lg"></i> Create College Elections</button>`;
         html += `<button class="btn btn-cems-primary" onclick="showCreateCampusModal()"><i class="bi bi-plus-lg"></i> Create Campus Election</button>`;
@@ -926,6 +996,7 @@ function renderPrimaryAction() {
 // ── Tab switching ────────────────────────────────────────────────────────
 function switchTab(tab) {
     if (tab === 'hybrid' && !isHybridElection(currentElectionDetail)) tab = 'overview';
+    if (tab !== 'voterroll') stopAdminLiveRefresh();
     currentTab = tab;
     document.querySelectorAll('#detailTabs .cems-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('d-none'));
@@ -1736,16 +1807,18 @@ function initPositionDnd() {
 }
 
 // ── Voter Roll Tab ───────────────────────────────────────────────────────
-function renderRegistrationWorkflowCard(el, registration, schoolYears, canEdit, canFinalize, rollSummary) {
-    const selectedYear = registration?.school_year_id || el.school_year_id || '';
-    const selectableYears = schoolYears.filter(sy => sy.status === 'active' || sy.id === selectedYear);
-    const options = selectableYears.length
-        ? selectableYears.map(sy => `<option value="${sy.id}" ${sy.id === selectedYear ? 'selected' : ''}>${esc(sy.name)}${sy.status === 'active' ? ' (active)' : ' (archived)'}</option>`).join('')
+function renderRegistrationWorkflowCard(el, registration, batches, canEdit, canFinalize, rollSummary) {
+    const selectedBatch = registration?.registrar_batch_id || el.registrar_batch_id || '';
+    const selectableBatches = batches.filter(b => b.status === 'active' || b.id === selectedBatch);
+    const options = selectableBatches.length
+        ? selectableBatches.map(b => `<option value="${b.id}" ${b.id === selectedBatch ? 'selected' : ''}>${esc(b.name)}${b.academic_year ? ` (${esc(b.academic_year)})` : ''}</option>`).join('')
         : '';
     const disabled = canEdit ? '' : 'disabled';
     const deadline = fmtDateTimeLocal(registration?.registration_closes_at || el.registration_closes_at);
     const approved = registration?.approved || 0;
     const eligible = registration?.eligible_voters ?? (rollSummary?.approved_count || 0);
+    const linkedBatchName = registration?.registrar_batch_name || el.registrar_batch_name || 'Not linked';
+    const linkedBatchYear = registration?.registrar_batch_academic_year || el.registrar_batch_academic_year || '';
     const open = !!registration?.registration_open;
     const openBadge = open
         ? '<span class="badge-status badge-active"><i class="bi bi-broadcast"></i> Open</span>'
@@ -1767,15 +1840,16 @@ function renderRegistrationWorkflowCard(el, registration, schoolYears, canEdit, 
                 </div>
                 <div class="text-muted small mt-1">${scopeText}</div>
             </div>
-            <button class="btn btn-cems-outline btn-sm" onclick="showSchoolYearsView()">
-                <i class="bi bi-person-vcard"></i> Manage Roster
+            <button class="btn btn-cems-outline btn-sm" onclick="showBatchesView()">
+                <i class="bi bi-database"></i> Manage Registrar Batches
             </button>
         </div>
         <div class="row g-3 mb-3">
             <div class="col-sm-4">
                 <div class="registration-stat">
-                    <div class="metric-label">School Year</div>
-                    <div class="fw-semibold">${esc(registration?.school_year_name || el.school_year_name || 'Not linked')}</div>
+                    <div class="metric-label">Registrar Batch</div>
+                    <div class="fw-semibold">${esc(linkedBatchName)}</div>
+                    ${linkedBatchYear ? `<div class="metric-sub">${esc(linkedBatchYear)}</div>` : ''}
                 </div>
             </div>
             <div class="col-sm-4">
@@ -1793,9 +1867,9 @@ function renderRegistrationWorkflowCard(el, registration, schoolYears, canEdit, 
         </div>
         <div class="row g-3 align-items-end">
             <div class="col-md-5">
-                <label class="form-label fw-semibold small">Linked School Year</label>
-                <select class="form-select" id="registration-school-year-select" ${disabled}>
-                    <option value="">Select school year</option>
+                <label class="form-label fw-semibold small">Linked Registrar Batch</label>
+                <select class="form-select" id="registration-batch-select" ${disabled}>
+                    <option value="">Select registrar batch</option>
                     ${options}
                 </select>
             </div>
@@ -1823,7 +1897,7 @@ async function saveElectionRegistrationSettings() {
     const deadlineValue = document.getElementById('registration-closes-input')?.value || '';
     try {
         const res = await apiPost(`/api/admin/elections/setup/${el.id}/registration/settings/`, {
-            school_year_id: document.getElementById('registration-school-year-select')?.value || '',
+            registrar_batch_id: document.getElementById('registration-batch-select')?.value || '',
             registration_enabled: document.getElementById('registration-enabled-input')?.checked || false,
             registration_closes_at: datetimeLocalToIso(deadlineValue),
         });
@@ -1836,15 +1910,39 @@ async function saveElectionRegistrationSettings() {
     } catch (err) { CEMS.showToast(err.message, 'danger'); }
 }
 
-async function renderVoterRoll() {
+async function renderVoterRoll(options = {}) {
+    const live = !!options.live;
     const el = currentElectionDetail;
+    if (!el) {
+        stopAdminLiveRefresh();
+        return;
+    }
+    if (live && !adminLiveRefreshVisible()) return;
+    if (live && adminVoterRollEditingActive()) {
+        updateVoterRollLiveStatus('Paused while editing');
+        return;
+    }
+    if (live && adminLiveRefreshInFlight) return;
+    if (live) adminLiveRefreshInFlight = true;
+    const requestSeq = ++adminLiveRefreshSeq;
     const isDraft = el.status === 'draft';
-    const canEdit = !adminUser.is_read_only && !el.voter_roll_finalized && isDraft;
-    const canFinalize = adminUser.is_eb_head && !el.voter_roll_finalized && isDraft;
+    let canEdit = !adminUser.is_read_only && !el.voter_roll_finalized && isDraft;
+    let canFinalize = adminUser.is_eb_head && !el.voter_roll_finalized && isDraft;
 
     try {
         const res = await CEMS.api(`/api/admin/elections/setup/${el.id}/voter-roll/summary/`);
-        if (!res.success) { document.getElementById('tab-voterroll').innerHTML = '<div class="text-danger">Failed to load voter roll.</div>'; return; }
+        if (!res.success) {
+            if (handleAdminLiveAuthFailure(res)) return;
+            if (live) {
+                updateVoterRollLiveStatus('Update delayed');
+                return;
+            }
+            document.getElementById('tab-voterroll').innerHTML = '<div class="text-danger">Failed to load voter roll.</div>';
+            return;
+        }
+        el.voter_roll_finalized = !!res.finalized;
+        canEdit = !adminUser.is_read_only && !res.finalized && isDraft;
+        canFinalize = adminUser.is_eb_head && !res.finalized && isDraft;
 
         const ms = res.match_summary || {};
         const pct = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '—';
@@ -1852,71 +1950,72 @@ async function renderVoterRoll() {
             registration_enabled: el.registration_enabled,
             registration_open: false,
             registration_closed_reason: '',
-            school_year_id: el.school_year_id || null,
-            school_year_name: el.school_year_name || '',
+            registrar_batch_id: el.registrar_batch_id || null,
+            registrar_batch_name: el.registrar_batch_name || '',
+            registrar_batch_academic_year: el.registrar_batch_academic_year || '',
             registration_closes_at: el.registration_closes_at || null,
             approved: 0,
             eligible_voters: res.approved_count || 0,
         };
-        let registrationSchoolYears = [];
+        let registrationBatches = [];
         try {
-            const [registrationRes, schoolYearsRes] = await Promise.all([
+            const [registrationRes, batchesRes] = await Promise.all([
                 CEMS.api(`/api/admin/elections/setup/${el.id}/registration/summary/`),
-                CEMS.api('/api/admin/elections/setup/school-years/'),
+                CEMS.api('/api/admin/elections/setup/registrar-batches/'),
             ]);
+            if (handleAdminLiveAuthFailure(registrationRes) || handleAdminLiveAuthFailure(batchesRes)) return;
             if (registrationRes.success) registrationSummary = registrationRes.registration;
-            if (schoolYearsRes.success) registrationSchoolYears = schoolYearsRes.school_years || [];
+            if (batchesRes.success) registrationBatches = batchesRes.batches || [];
+            el.registration_enabled = !!registrationSummary.registration_enabled;
+            el.registration_closes_at = registrationSummary.registration_closes_at || null;
+            el.registrar_batch_id = registrationSummary.registrar_batch_id || null;
+            el.registrar_batch_name = registrationSummary.registrar_batch_name || '';
+            el.registrar_batch_academic_year = registrationSummary.registrar_batch_academic_year || '';
         } catch (summaryErr) {
-            console.warn('Registration summary unavailable', summaryErr);
+            if (!live || !adminLiveRefreshWarned) console.warn('Registration summary unavailable', summaryErr);
+            adminLiveRefreshWarned = true;
         }
-        const hasWebEligible = (registrationSummary.approved || 0) > 0 || (registrationSummary.eligible_voters || 0) > 0;
-        let html = '';
+        if (requestSeq !== adminLiveRefreshSeq) return;
+        let html = renderVoterRollLiveHeader(new Date());
 
         // ── Finalized banner ──────────────────────────────────────────────
         if (res.finalized) {
             html += `<div class="vr-finalized-banner mb-4"><i class="bi bi-shield-check-fill"></i> Voter roll finalized by <strong>${esc(res.finalized_by||'')}</strong> on ${fmtDateTime(res.finalized_at)}</div>`;
         }
 
-        if (isDraft || registrationSummary.school_year_id || registrationSummary.total > 0) {
-            html += renderRegistrationWorkflowCard(el, registrationSummary, registrationSchoolYears, canEdit, canFinalize, res);
+        if (isDraft || registrationSummary.registrar_batch_id || registrationSummary.total > 0) {
+            html += renderRegistrationWorkflowCard(el, registrationSummary, registrationBatches, canEdit, canFinalize, res);
         }
 
         // ── Setup Pipeline ────────────────────────────────────────────────
         if (isDraft && !res.finalized) {
-            const batchOk = !!el.registrar_batch_name;
-            const importOk = (ms.total || 0) > 0;
-            const genOk = (res.approved_count || 0) > 0;
+            const batchOk = !!(registrationSummary.registrar_batch_id || el.registrar_batch_id);
+            const registrationEnabled = !!registrationSummary.registration_enabled;
+            const eligibleOk = (registrationSummary.eligible_voters || 0) > 0;
 
-            const stepState = (ok, idx, current) => {
-                if (ok) return 'done';
-                if (idx === current) return 'current';
-                return 'pending';
-            };
             // Which step is the active one?
-            let currentStep = !batchOk ? 1 : !importOk ? 2 : !genOk ? 3 : 4;
+            let currentStep = !batchOk ? 1 : !registrationEnabled ? 2 : !eligibleOk ? 3 : 4;
 
             const steps = [
                 { n: 1, label: 'Link Registrar Batch', icon: 'bi-database',
-                  detail: batchOk ? `Linked: <strong>${esc(el.registrar_batch_name)}</strong>` : 'No batch linked yet',
+                  detail: batchOk ? `Linked: <strong>${esc(registrationSummary.registrar_batch_name || el.registrar_batch_name || '')}</strong>` : 'No batch linked yet',
                   action: canEdit ? `<button class="btn btn-cems-outline btn-sm" onclick="showAssignBatchModal()"><i class="bi bi-link-45deg me-1"></i>${batchOk ? 'Change Batch' : 'Select Batch'}</button>` : '',
                   ok: batchOk },
-                { n: 2, label: 'Import Verification Records', icon: 'bi-file-earmark-arrow-up',
-                  detail: importOk ? `<strong>${(ms.total||0).toLocaleString()}</strong> records imported (<span style="color:var(--cems-success)">${(ms.matched||0).toLocaleString()} matched</span>, <span style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()} unmatched</span>)` : 'No verification records yet',
-                  action: canEdit ? `<button class="btn btn-cems-outline btn-sm" onclick="showImportVoterRollModal()"><i class="bi bi-upload me-1"></i>${importOk ? 'Re-import CSV' : 'Import CSV'}</button>` : '',
-                  ok: importOk },
-                { n: 3, label: 'Generate Voter Roll', icon: 'bi-people-fill',
-                  detail: genOk ? `<strong>${(res.approved_count||0).toLocaleString()}</strong> eligible voters across ${Object.keys(res.approved_by_college||{}).length} college(s)` : 'Voter roll not yet generated',
-                  action: canEdit && importOk ? `<button class="btn btn-cems-outline btn-sm" onclick="generateVoterRoll()"><i class="bi bi-gear me-1"></i>Generate</button>` : '',
-                  ok: genOk },
+                { n: 2, label: 'Enable Web Registration', icon: 'bi-person-check',
+                  detail: registrationEnabled ? 'Students in the linked batch can register.' : 'Registration is currently disabled.',
+                  action: canEdit ? `<button class="btn btn-cems-outline btn-sm" onclick="saveElectionRegistrationSettings()"><i class="bi bi-check2-circle me-1"></i>Save Settings</button>` : '',
+                  ok: registrationEnabled },
+                { n: 3, label: 'Student Registrations', icon: 'bi-people-fill',
+                  detail: eligibleOk ? `<strong>${(registrationSummary.approved||0).toLocaleString()}</strong> approved registration(s), <strong>${(registrationSummary.eligible_voters||0).toLocaleString()}</strong> eligible voter(s)` : 'No students have registered yet.',
+                  action: '',
+                  ok: eligibleOk },
                 { n: 4, label: 'Finalize Voter Roll', icon: 'bi-lock-fill',
                   detail: 'Lock the voter roll — required before starting the election',
-                  action: canFinalize && genOk ? `<button class="btn btn-cems-primary btn-sm" onclick="finalizeVoterRoll()"><i class="bi bi-lock me-1"></i>Finalize Now</button>` : '',
+                  action: canFinalize && eligibleOk ? `<button class="btn btn-cems-primary btn-sm" onclick="finalizeVoterRoll()"><i class="bi bi-lock me-1"></i>Finalize Now</button>` : '',
                   ok: false },
             ];
 
-            html += hasWebEligible
-                ? `<details class="csv-fallback mb-4"><summary><i class="bi bi-file-earmark-spreadsheet me-1"></i>CSV import fallback</summary><div class="vr-pipeline mt-3">`
-                : `<div class="vr-pipeline mb-4">`;
+            html += `<div class="vr-pipeline mb-4">`;
             steps.forEach((s, i) => {
                 const state = s.ok ? 'done' : (s.n === currentStep ? 'current' : 'pending');
                 html += `<div class="vr-step ${state}">
@@ -1930,15 +2029,42 @@ async function renderVoterRoll() {
                 </div>`;
                 if (i < steps.length - 1) html += `<div class="vr-step-connector ${s.ok ? 'done' : ''}"></div>`;
             });
-            html += hasWebEligible ? `</div></details>` : `</div>`;
+            html += `</div>`;
+
+            if (canEdit || (ms.total || 0) > 0) {
+                const importOk = (ms.total || 0) > 0;
+                html += `<details class="csv-fallback mb-4">
+                    <summary><i class="bi bi-file-earmark-spreadsheet me-1"></i>Legacy CSV verification fallback</summary>
+                    <div class="vr-pipeline mt-3">
+                        <div class="vr-step ${importOk ? 'done' : 'current'}">
+                            <div class="vr-step-icon"><i class="bi bi-file-earmark-arrow-up"></i></div>
+                            <div class="vr-step-body">
+                                <div class="vr-step-label">Import Verification Records</div>
+                                <div class="vr-step-detail">${importOk ? `<strong>${(ms.total||0).toLocaleString()}</strong> records imported (<span style="color:var(--cems-success)">${(ms.matched||0).toLocaleString()} matched</span>, <span style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()} unmatched</span>)` : 'No verification records imported.'}</div>
+                                ${canEdit ? `<div class="mt-2"><button class="btn btn-cems-outline btn-sm" onclick="showImportVoterRollModal()"><i class="bi bi-upload me-1"></i>${importOk ? 'Re-import CSV' : 'Import CSV'}</button></div>` : ''}
+                            </div>
+                            ${importOk ? '<i class="bi bi-check-circle-fill vr-step-check"></i>' : ''}
+                        </div>
+                        <div class="vr-step-connector ${importOk ? 'done' : ''}"></div>
+                        <div class="vr-step ${eligibleOk ? 'done' : importOk ? 'current' : 'pending'}">
+                            <div class="vr-step-icon"><i class="bi bi-gear"></i></div>
+                            <div class="vr-step-body">
+                                <div class="vr-step-label">Generate Voter Roll From CSV</div>
+                                <div class="vr-step-detail">Use only for legacy/manual voter approval workflows.</div>
+                                ${canEdit && importOk ? `<div class="mt-2"><button class="btn btn-cems-outline btn-sm" onclick="generateVoterRoll()"><i class="bi bi-gear me-1"></i>Generate</button></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </details>`;
+            }
         }
 
         // ── Metrics row ───────────────────────────────────────────────────
         html += `<div class="row g-3 mb-4">
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">CSV Imported</div><div class="metric-value" style="color:var(--cems-primary)">${(ms.total||0).toLocaleString()}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">CSV Matched</div><div class="metric-value">${(ms.matched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.matched,ms.total)}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">CSV Unmatched</div><div class="metric-value" style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.unmatched,ms.total)}</div></div></div>
-            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Eligible Voters</div><div class="metric-value" style="color:var(--cems-success)">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">${hasWebEligible ? 'web or CSV source' : pct(res.approved_count,ms.total)}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Approved Registrations</div><div class="metric-value" style="color:var(--cems-primary)">${(registrationSummary.approved||0).toLocaleString()}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Eligible Voters</div><div class="metric-value" style="color:var(--cems-success)">${(res.approved_count||0).toLocaleString()}</div><div class="metric-sub">final voter roll entries</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Legacy CSV Imported</div><div class="metric-value">${(ms.total||0).toLocaleString()}</div></div></div>
+            <div class="col-6 col-md-3"><div class="metric-card"><div class="metric-label">Legacy CSV Unmatched</div><div class="metric-value" style="color:var(--cems-warning)">${(ms.unmatched||0).toLocaleString()}</div><div class="metric-sub">${pct(ms.unmatched,ms.total)}</div></div></div>
         </div>`;
 
         // ── College breakdown ──────────────────────────────────────────────
@@ -1992,9 +2118,20 @@ async function renderVoterRoll() {
             html += `<div class="empty-state mt-2"><i class="bi bi-people"></i><p>No eligible voters yet.<br><small class="text-muted">Open web registration or use the CSV fallback.</small></p></div>`;
         }
 
+        if (requestSeq !== adminLiveRefreshSeq) return;
         document.getElementById('tab-voterroll').innerHTML = html;
+        adminLiveRefreshWarned = false;
+        if (!live) startAdminLiveRefresh();
     } catch (err) {
+        if (live) {
+            if (!adminLiveRefreshWarned) console.warn('Live voter-roll refresh failed', err);
+            adminLiveRefreshWarned = true;
+            updateVoterRollLiveStatus('Update delayed');
+            return;
+        }
         document.getElementById('tab-voterroll').innerHTML = '<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>Error loading voter roll</p></div>';
+    } finally {
+        if (live) adminLiveRefreshInFlight = false;
     }
 }
 
@@ -2574,6 +2711,7 @@ function finalizeVoterRoll() {
 // ══════════════════════════════════════════════════════════════════════════
 let batchList = [];
 async function showBatchesView() {
+    stopAdminLiveRefresh();
     hideAdminViews();
     document.getElementById('view-batches').classList.remove('d-none');
     try {
@@ -2735,6 +2873,7 @@ function currentSchoolYear() {
 }
 
 async function showSchoolYearsView() {
+    stopAdminLiveRefresh();
     hideAdminViews();
     document.getElementById('view-school-years').classList.remove('d-none');
     await loadSchoolYears();
@@ -2987,6 +3126,7 @@ function showConfirm(title, message, onConfirm) {
 let collegeList = [];
 
 async function showCollegesView() {
+    stopAdminLiveRefresh();
     hideAdminViews();
     document.getElementById('view-colleges').classList.remove('d-none');
     await loadColleges();

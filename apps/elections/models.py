@@ -145,6 +145,54 @@ class RegistrarImportBatch(models.Model):
         return f"{self.name} ({self.get_status_display()})"
 
 
+class RegistrarRecord(models.Model):
+    """A student's membership in a registrar import batch."""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(
+        RegistrarImportBatch,
+        on_delete=models.CASCADE,
+        related_name="records",
+    )
+    student = models.ForeignKey(
+        "accounts.Student",
+        on_delete=models.PROTECT,
+        related_name="registrar_records",
+    )
+    student_identifier = models.CharField(max_length=50, db_index=True)
+    full_name = models.CharField(max_length=255)
+    date_of_birth = models.DateField()
+    college = models.CharField(max_length=255, db_index=True)
+    course = models.CharField(max_length=255)
+    year_level = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["batch", "student_identifier"]
+        verbose_name = "Registrar Record"
+        verbose_name_plural = "Registrar Records"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "student_identifier"],
+                name="unique_registrar_record_per_batch_student_identifier",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.student_identifier} - {self.batch.name}"
+
+
 class Election(models.Model):
     """Represents a discrete election event — campus-wide or per-college."""
 
@@ -573,6 +621,16 @@ class VoterRegistration(models.Model):
         EnrollmentRecord,
         on_delete=models.PROTECT,
         related_name="voter_registrations",
+        null=True,
+        blank=True,
+    )
+    registrar_record = models.ForeignKey(
+        RegistrarRecord,
+        on_delete=models.PROTECT,
+        related_name="voter_registrations",
+        null=True,
+        blank=True,
+        help_text="Registrar batch record used for batch-backed web registration.",
     )
     eligible_voter = models.OneToOneField(
         EligibleVoter,

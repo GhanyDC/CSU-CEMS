@@ -19,6 +19,7 @@ from apps.elections.models import (
     EligibleVoter,
     Position,
     RegistrarImportBatch,
+    RegistrarRecord,
     SchoolYear,
     VoterRegistration,
     VerificationRecord,
@@ -735,7 +736,7 @@ class SchoolYearRosterService:
 
 
 class WebVoterRegistrationService:
-    """Student self-registration backed by school-year enrollment records."""
+    """Student self-registration backed by registrar batch records."""
 
     @staticmethod
     def registration_is_open(election: Election, now=None) -> tuple[bool, str]:
@@ -746,33 +747,59 @@ class WebVoterRegistrationService:
             return False, "Registration is not enabled for this election."
         if election.is_voter_roll_finalized:
             return False, "The voter roll is already finalized."
-        if not election.school_year_id:
-            return False, "This election is not linked to a school year."
+        if not election.registrar_batch_id:
+            return False, "This election is not linked to a registrar batch."
+        if election.registrar_batch.status != RegistrarImportBatch.Status.ACTIVE:
+            return False, "This election's registrar batch is archived."
         if election.registration_closes_at and now > election.registration_closes_at:
             return False, "Registration is already closed."
         return True, ""
 
     @staticmethod
-    def _ensure_can_register(student, election: Election) -> EnrollmentRecord:
+    def get_active_registrar_record(student, batch: RegistrarImportBatch) -> RegistrarRecord | None:
+        """Return the student's active membership in a registrar batch."""
+        return (
+            RegistrarRecord.objects
+            .select_related("batch", "student")
+            .filter(
+                batch=batch,
+                batch__status=RegistrarImportBatch.Status.ACTIVE,
+                status=RegistrarRecord.Status.ACTIVE,
+            )
+            .filter(Q(student=student) | Q(student_identifier=student.student_id))
+            .first()
+        )
+
+    @staticmethod
+    def student_has_active_batch_membership(student) -> bool:
+        """Return True when a student belongs to at least one active registrar batch."""
+        return RegistrarRecord.objects.filter(
+            student=student,
+            status=RegistrarRecord.Status.ACTIVE,
+            batch__status=RegistrarImportBatch.Status.ACTIVE,
+        ).exists()
+
+    @staticmethod
+    def _ensure_can_register(student, election: Election) -> RegistrarRecord:
         open_ok, reason = WebVoterRegistrationService.registration_is_open(election)
         if not open_ok:
             raise RegistrationError(reason)
 
-        enrollment = SchoolYearRosterService.get_active_enrollment(
+        registrar_record = WebVoterRegistrationService.get_active_registrar_record(
             student,
-            election.school_year,
+            election.registrar_batch,
         )
-        if enrollment is None:
+        if registrar_record is None:
             raise RegistrationError(
-                "You do not have an active enrollment record for this school year."
+                "You are not listed in the linked registrar batch for this election."
             )
 
-        if election.is_college and not college_matches(enrollment.college, election.college):
+        if election.is_college and not college_matches(registrar_record.college, election.college):
             raise RegistrationError(
                 "You are not eligible to register for this college election."
             )
 
-        return enrollment
+        return registrar_record
 
     @staticmethod
     def build_registration_status(student, election: Election) -> dict:
@@ -780,27 +807,27 @@ class WebVoterRegistrationService:
         registration = (
             VoterRegistration.objects
             .filter(election=election, student=student)
-            .select_related("eligible_voter", "enrollment_record")
+            .select_related("eligible_voter", "registrar_record")
             .first()
         )
-        enrollment = None
-        if election.school_year_id:
-            enrollment = SchoolYearRosterService.get_active_enrollment(
+        registrar_record = None
+        if election.registrar_batch_id:
+            registrar_record = WebVoterRegistrationService.get_active_registrar_record(
                 student,
-                election.school_year,
+                election.registrar_batch,
             )
         open_ok, reason = WebVoterRegistrationService.registration_is_open(election)
         college_ok = True
-        if enrollment and election.is_college:
-            college_ok = college_matches(enrollment.college, election.college)
+        if registrar_record and election.is_college:
+            college_ok = college_matches(registrar_record.college, election.college)
             if not college_ok and not reason:
                 reason = "You are not eligible to register for this college election."
 
         return {
             "election_id": str(election.pk),
-            "registration_open": open_ok and bool(enrollment) and college_ok,
-            "reason": "" if open_ok and enrollment and college_ok else (
-                reason or "You do not have an active enrollment record for this school year."
+            "registration_open": open_ok and bool(registrar_record) and college_ok,
+            "reason": "" if open_ok and registrar_record and college_ok else (
+                reason or "You are not listed in the linked registrar batch for this election."
             ),
             "registered": bool(registration and registration.status == VoterRegistration.Status.APPROVED),
             "status": registration.status if registration else None,
@@ -809,11 +836,14 @@ class WebVoterRegistrationService:
                 if registration and registration.eligible_voter_id
                 else None
             ),
-            "school_year": election.school_year.name if election.school_year_id else "",
+            "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
+            "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else "",
+            "registrar_batch_academic_year": election.registrar_batch.academic_year if election.registrar_batch_id else "",
+            "school_year": election.registrar_batch.academic_year if election.registrar_batch_id else "",
             "college_snapshot": (
                 registration.college_snapshot
                 if registration
-                else (enrollment.college if enrollment else "")
+                else (registrar_record.college if registrar_record else "")
             ),
             "registration_closes_at": (
                 election.registration_closes_at.isoformat()
@@ -826,11 +856,12 @@ class WebVoterRegistrationService:
         """Return draft elections the student can self-register for."""
         elections = (
             Election.objects
-            .select_related("school_year")
+            .select_related("registrar_batch")
             .filter(
                 status=Election.Status.DRAFT,
                 registration_enabled=True,
-                school_year__isnull=False,
+                registrar_batch__isnull=False,
+                registrar_batch__status=RegistrarImportBatch.Status.ACTIVE,
                 voter_roll_finalized_at__isnull=True,
             )
             .order_by("start_time", "name")
@@ -848,6 +879,8 @@ class WebVoterRegistrationService:
                 "name": election.name,
                 "election_type": election.election_type,
                 "college": election.college,
+                "registrar_batch_name": status["registrar_batch_name"],
+                "registrar_batch_academic_year": status["registrar_batch_academic_year"],
                 "school_year": status["school_year"],
                 "start_time": election.start_time.isoformat(),
                 "end_time": election.end_time.isoformat(),
@@ -875,7 +908,7 @@ class WebVoterRegistrationService:
             .select_for_update()
             .get(pk=election.pk)
         )
-        enrollment = WebVoterRegistrationService._ensure_can_register(
+        registrar_record = WebVoterRegistrationService._ensure_can_register(
             student,
             election,
         )
@@ -883,21 +916,21 @@ class WebVoterRegistrationService:
         eligible_voter, eligible_created = EligibleVoter.objects.get_or_create(
             election=election,
             student=student,
-            defaults={"college_snapshot": enrollment.college},
+            defaults={"college_snapshot": registrar_record.college},
         )
-        if not college_matches(eligible_voter.college_snapshot, enrollment.college):
-            eligible_voter.college_snapshot = enrollment.college
+        if not college_matches(eligible_voter.college_snapshot, registrar_record.college):
+            eligible_voter.college_snapshot = registrar_record.college
             eligible_voter.save(update_fields=["college_snapshot"])
 
         registration, created = VoterRegistration.objects.get_or_create(
             election=election,
             student=student,
             defaults={
-                "enrollment_record": enrollment,
+                "registrar_record": registrar_record,
                 "eligible_voter": eligible_voter,
                 "status": VoterRegistration.Status.APPROVED,
                 "source": VoterRegistration.Source.WEB,
-                "college_snapshot": enrollment.college,
+                "college_snapshot": registrar_record.college,
                 "decided_at": timezone.now(),
                 "ip_address": ip_address,
                 "user_agent": user_agent,
@@ -909,14 +942,14 @@ class WebVoterRegistrationService:
             registration.status = VoterRegistration.Status.APPROVED
             registration.decided_at = timezone.now()
             update_fields.extend(["status", "decided_at"])
-        if registration.enrollment_record_id != enrollment.pk:
-            registration.enrollment_record = enrollment
-            update_fields.append("enrollment_record")
+        if registration.registrar_record_id != registrar_record.pk:
+            registration.registrar_record = registrar_record
+            update_fields.append("registrar_record")
         if registration.eligible_voter_id != eligible_voter.pk:
             registration.eligible_voter = eligible_voter
             update_fields.append("eligible_voter")
-        if not college_matches(registration.college_snapshot, enrollment.college):
-            registration.college_snapshot = enrollment.college
+        if not college_matches(registration.college_snapshot, registrar_record.college):
+            registration.college_snapshot = registrar_record.college
             update_fields.append("college_snapshot")
         if ip_address and registration.ip_address != ip_address:
             registration.ip_address = ip_address
@@ -951,8 +984,11 @@ class WebVoterRegistrationService:
             "registration_enabled": election.registration_enabled,
             "registration_open": open_ok,
             "registration_closed_reason": reason,
-            "school_year_id": str(election.school_year_id) if election.school_year_id else None,
-            "school_year_name": election.school_year.name if election.school_year_id else "",
+            "registrar_batch_id": str(election.registrar_batch_id) if election.registrar_batch_id else None,
+            "registrar_batch_name": election.registrar_batch.name if election.registrar_batch_id else "",
+            "registrar_batch_academic_year": election.registrar_batch.academic_year if election.registrar_batch_id else "",
+            "school_year_id": None,
+            "school_year_name": "",
             "registration_closes_at": (
                 election.registration_closes_at.isoformat()
                 if election.registration_closes_at else None
@@ -1241,8 +1277,8 @@ class RegistrarBatchService:
         rows: list[dict],
     ) -> dict:
         """
-        Import student records from CSV rows into the Student table,
-        tagged with this batch.
+        Import student records from CSV rows into the Student table and
+        this batch's registrar membership records.
 
         Args:
             batch: The RegistrarImportBatch to associate with.
@@ -1256,6 +1292,8 @@ class RegistrarBatchService:
 
         created = 0
         updated = 0
+        records_created = 0
+        records_updated = 0
         skipped = 0
         errors = []
 
@@ -1267,16 +1305,26 @@ class RegistrarBatchService:
 
             full_name = row.get("full_name", "").strip()
             dob_raw = row.get("date_of_birth", "").strip()
-            college = row.get("college", "").strip()
+            college = resolve_official_college(row.get("college", ""))
             course = row.get("course", "").strip()
             year_raw = row.get("year", "1").strip()
+            status = (row.get("status", RegistrarRecord.Status.ACTIVE) or "").strip().lower()
 
             if not full_name:
                 errors.append(f"Row {i+1}: missing full_name for {sid}")
                 continue
+            if not dob_raw:
+                errors.append(f"Row {i+1}: missing date_of_birth for {sid}")
+                continue
+            if not college:
+                errors.append(f"Row {i+1}: missing college for {sid}")
+                continue
+            if not course:
+                errors.append(f"Row {i+1}: missing course for {sid}")
+                continue
 
             try:
-                dob = date.fromisoformat(dob_raw) if dob_raw else date(2000, 1, 1)
+                dob = date.fromisoformat(dob_raw)
             except (ValueError, TypeError):
                 errors.append(f"Row {i+1}: invalid date_of_birth for {sid}")
                 continue
@@ -1284,7 +1332,14 @@ class RegistrarBatchService:
             try:
                 year_val = int(year_raw) if year_raw else 1
             except (ValueError, TypeError):
-                year_val = 1
+                errors.append(f"Row {i+1}: invalid year for {sid}")
+                continue
+            if year_val < 1:
+                errors.append(f"Row {i+1}: invalid year for {sid}")
+                continue
+            if status not in {choice[0] for choice in RegistrarRecord.Status.choices}:
+                errors.append(f"Row {i+1}: invalid status for {sid}")
+                continue
 
             student, was_created = Student.objects.update_or_create(
                 student_id=sid,
@@ -1302,17 +1357,38 @@ class RegistrarBatchService:
             else:
                 updated += 1
 
-        batch.total_imported = created + updated
+            _, record_created = RegistrarRecord.objects.update_or_create(
+                batch=batch,
+                student_identifier=sid,
+                defaults={
+                    "student": student,
+                    "full_name": full_name,
+                    "date_of_birth": dob,
+                    "college": college,
+                    "course": course,
+                    "year_level": year_val,
+                    "status": status,
+                },
+            )
+            if record_created:
+                records_created += 1
+            else:
+                records_updated += 1
+
+        batch.total_imported = RegistrarRecord.objects.filter(batch=batch).count()
         batch.save(update_fields=["total_imported", "updated_at"])
 
         logger.info(
-            "Registrar batch import: batch=%s, created=%d, updated=%d, skipped=%d, errors=%d",
-            batch.pk, created, updated, skipped, len(errors),
+            "Registrar batch import: batch=%s, students_created=%d, students_updated=%d, records_created=%d, records_updated=%d, skipped=%d, errors=%d",
+            batch.pk, created, updated, records_created, records_updated, skipped, len(errors),
         )
 
         return {
             "created": created,
             "updated": updated,
+            "records_created": records_created,
+            "records_updated": records_updated,
+            "total_records": batch.total_imported,
             "skipped": skipped,
             "errors": errors[:20],  # Limit error details
         }
@@ -1342,6 +1418,8 @@ class RegistrarBatchService:
         """Link a registrar batch to an election."""
         if election.is_voter_roll_finalized:
             raise VoterRollError("Cannot change batch: voter roll is already finalized.")
+        if batch.status != RegistrarImportBatch.Status.ACTIVE:
+            raise VoterRollError("Cannot link an archived registrar batch.")
         election.registrar_batch = batch
         election.save(update_fields=["registrar_batch", "updated_at"])
         logger.info(

@@ -29,6 +29,7 @@ from apps.accounts.models import AdminProfile, Student
 from apps.accounts.utils import get_client_ip, get_user_agent
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
+from apps.elections.models import RegistrarImportBatch, RegistrarRecord
 
 logger = logging.getLogger("cems.login")
 
@@ -139,6 +140,25 @@ def student_login(request: Any) -> JsonResponse:
         )
 
     # --- Success ---
+    has_active_registrar_membership = RegistrarRecord.objects.filter(
+        student=student,
+        status=RegistrarRecord.Status.ACTIVE,
+        batch__status=RegistrarImportBatch.Status.ACTIVE,
+    ).exists()
+    if not has_active_registrar_membership:
+        AuditService.log_event(
+            student_id_attempted=student_id,
+            event_type=AuditLog.EventType.LOGIN_ATTEMPT,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="No active registrar batch membership.",
+        )
+        return JsonResponse(
+            {"success": False, "error": GENERIC_AUTH_ERROR},
+            status=401,
+        )
+
     student.reset_failed_attempts()
 
     AuditService.log_event(

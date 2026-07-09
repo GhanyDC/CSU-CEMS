@@ -1,0 +1,51 @@
+student_id,full_name,date_of_birth,college,course,year
+TEST-2027-0001,Ada Reyes,2001-01-02,College of Information and Computing Sciences,BS Computer Science,3
+TEST-2027-0002,Ben Santos,2001-01-03,College of Information and Computing Sciences,BS Information Systems,2
+TEST-2027-0003,Cara Dizon,2001-01-04,College of Information and Computing Sciences,BS Information Technology,4
+TEST-2027-0004,Diego Cruz,2001-01-05,College of Information and Computing Sciences,BS Computer Science,1
+TEST-2027-0005,Elena Garcia,2001-01-06,College of Information and Computing Sciences,BS Information Systems,3
+TEST-2027-0006,Felix Aquino,2001-01-07,College of Information and Computing Sciences,BS Information Technology,2
+TEST-2027-0007,Gia Navarro,2001-02-02,College of Architecture and Engineering,BS Civil Engineering,4
+TEST-2027-0008,Hugo Mercado,2001-02-03,College of Architecture and Engineering,BS Mechanical Engineering,3
+TEST-2027-0009,Iris Bautista,2001-02-04,College of Architecture and Engineering,BS Architecture,2
+TEST-2027-0010,Jasper Lim,2001-02-05,College of Architecture and Engineering,BS Electrical Engineering,1
+TEST-2027-0011,Kara Villanueva,2001-02-06,College of Architecture and Engineering,BS Electronics Engineering,4
+TEST-2027-0012,Leo Mendoza,2001-02-07,College of Architecture and Engineering,BS Civil Engineering,2
+TEST-2027-0013,Maya Flores,2001-03-02,College of Humanities and Social Sciences,BA Communication,3
+TEST-2027-0014,Nico Ramos,2001-03-03,College of Humanities and Social Sciences,BA Political Science,2
+TEST-2027-0015,Olivia Torres,2001-03-04,College of Humanities and Social Sciences,BA Psychology,4
+TEST-2027-0016,Paolo Rivera,2001-03-05,College of Humanities and Social Sciences,BA Sociology,1
+TEST-2027-0017,Quinn Castillo,2001-03-06,College of Humanities and Social Sciences,BA English Language Studies,3
+TEST-2027-0018,Rhea Salazar,2001-03-07,College of Humanities and Social Sciences,BA Communication,2
+TEST-2027-0019,Sean Ortega,2001-04-02,College of Natural Sciences and Mathematics,BS Biology,4
+TEST-2027-0020,Tala Pineda,2001-04-03,College of Natural Sciences and Mathematics,BS Mathematics,3
+TEST-2027-0021,Ulysses Tan,2001-04-04,College of Natural Sciences and Mathematics,BS Chemistry,2
+TEST-2027-0022,Vera Ong,2001-04-05,College of Natural Sciences and Mathematics,BS Physics,1
+TEST-2027-0023,Wade Angeles,2001-04-06,College of Natural Sciences and Mathematics,BS Biology,4
+TEST-2027-0024,Xena Lao,2001-04-07,College of Natural Sciences and Mathematics,BS Mathematics,2
+TEST-2027-0025,Yuri Chan,2001-05-02,College of Public Administration,BS Public Administration,3
+TEST-2027-0026,Zara Sy,2001-05-03,College of Public Administration,BS Public Administration,2
+TEST-2027-0027,Alvin Chua,2001-05-04,College of Public Administration,BA Public Policy,4
+TEST-2027-0028,Bianca Uy,2001-05-05,College of Public Administration,BS Public Administration,1
+TEST-2027-0029,Cedric Yu,2001-05-06,College of Public Administration,BA Public Policy,3
+TEST-2027-0030,Daphne Co,2001-06-02,College of Industrial Technology,BS Industrial Technology,2
+TEST-2027-0031,Ethan Go,2001-06-03,College of Industrial Technology,BS Automotive Technology,4
+TEST-2027-0032,Fiona Dee,2001-06-04,College of Industrial Technology,BS Electronics Technology,3
+TEST-2027-0033,Gavin Ong,2001-06-05,College of Industrial Technology,BS Mechanical Technology,1
+TEST-2027-0034,Hazel Tan,2001-06-06,College of Industrial Technology,BS Industrial Technology,2
+TEST-2027-0035,Ivan Lee,2001-07-02,College of Human Kinetics,BS Physical Education,3
+TEST-2027-0036,Jessa Cruz,2001-07-03,College of Human Kinetics,BS Exercise and Sports Sciences,2
+TEST-2027-0037,Kian Reyes,2001-07-04,College of Human Kinetics,BS Physical Education,4
+TEST-2027-0038,Lara Santos,2001-07-05,College of Human Kinetics,BS Exercise and Sports Sciences,1
+TEST-2027-0039,Marco Dela Cruz,2001-08-02,College of Veterinary Medicine,Doctor of Veterinary Medicine,3
+TEST-2027-0040,Nina Soriano,2001-08-03,College of Veterinary Medicine,Doctor of Veterinary Medicine,2
+TEST-2027-0041,Owen Villarin,2001-08-04,College of Veterinary Medicine,Doctor of Veterinary Medicine,4
+TEST-2027-0042,Pia Manalo,2001-08-05,College of Veterinary Medicine,Doctor of Veterinary Medicine,1
+TEST-2027-0043,Ramon Diaz,2001-09-02,College of Nursing,BS Nursing,3
+TEST-2027-0044,Sofia Cruz,2001-09-03,College of Nursing,BS Nursing,2
+TEST-2027-0045,Tomas Aquino,2001-09-04,College of Nursing,BS Nursing,4
+TEST-2027-0046,Una Mendoza,2001-09-05,College of Nursing,BS Nursing,1
+TEST-2027-0047,Vince Navarro,2001-09-06,College of Nursing,BS Nursing,3
+TEST-2027-0048,Willa Flores,2001-09-07,College of Nursing,BS Nursing,2
+TEST-2027-0049,Xavier Ramos,2001-10-02,College of Architecture and Engineering,BS Computer Engineering,4
+TEST-2027-0050,Yna Bautista,2001-10-03,College of Information and Computing Sciences,BS Data Science,1

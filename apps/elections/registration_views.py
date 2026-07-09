@@ -13,7 +13,7 @@ from apps.elections.services import RegistrationError, WebVoterRegistrationServi
 
 def _get_election_or_404(election_id):
     try:
-        return Election.objects.select_related("school_year").get(pk=election_id), None
+        return Election.objects.select_related("registrar_batch").get(pk=election_id), None
     except (Election.DoesNotExist, ValueError, ValidationError):
         return None, JsonResponse(
             {"success": False, "error": "Election not found."},

@@ -24,7 +24,15 @@ from django.utils import timezone
 
 from apps.accounts.models import AdminProfile, AdminRole, Student
 from apps.audit.models import AuditLog
-from apps.elections.models import Candidate, Election, EligibleVoter, Position, VerificationRecord
+from apps.elections.models import (
+    Candidate,
+    Election,
+    EligibleVoter,
+    Position,
+    RegistrarImportBatch,
+    RegistrarRecord,
+    VerificationRecord,
+)
 from apps.elections.constants import OFFICIAL_COLLEGES
 from apps.voting.models import Ballot, BallotSelection
 
@@ -109,6 +117,7 @@ class Command(BaseCommand):
             Candidate.objects.all().delete()
             Position.objects.all().delete()
             Election.objects.all().delete()
+            RegistrarImportBatch.objects.filter(name="AY 2025-2026 SSC Pilot Registrar Batch").delete()
             Student.objects.all().delete()
             AuditLog.objects.all().delete()
             # Remove pilot admin users/profiles (only those created by this command)
@@ -148,11 +157,14 @@ class Command(BaseCommand):
         Student.objects.bulk_create(students, ignore_conflicts=True)
         self.stdout.write(self.style.SUCCESS(f"  Created {len(students)} students."))
 
+        batch = self._create_registrar_batch()
+
         # ── Election ──────────────────────────────────────────────
         self.stdout.write("Creating election...")
         now = timezone.now()
         election = Election.objects.create(
             name="AY 2025-2026 SSC General Election (Pilot)",
+            registrar_batch=batch,
             start_time=now + timedelta(hours=1),
             end_time=now + timedelta(days=3),
             status=Election.Status.DRAFT,
@@ -221,6 +233,7 @@ class Command(BaseCommand):
         # ── Voter Roll ────────────────────────────────────────────
         self.stdout.write("Building voter roll (verification -> eligible voters -> finalize)...")
         all_students = list(Student.objects.all())
+        self._build_registrar_records(batch, all_students)
         self._build_voter_roll(election, all_students)
 
         self.stdout.write(self.style.SUCCESS("\nPilot data generation complete."))
@@ -273,6 +286,47 @@ class Command(BaseCommand):
             )
             created += 1
         return created
+
+    def _create_registrar_batch(self):
+        batch, _ = RegistrarImportBatch.objects.update_or_create(
+            name="AY 2025-2026 SSC Pilot Registrar Batch",
+            defaults={
+                "academic_year": "2025-2026",
+                "description": "Pilot registrar dataset generated for local demo testing.",
+                "status": RegistrarImportBatch.Status.ACTIVE,
+                "imported_by": "generate_pilot_data",
+            },
+        )
+        return batch
+
+    def _build_registrar_records(self, batch, students):
+        existing_ids = set(
+            RegistrarRecord.objects
+            .filter(batch=batch)
+            .values_list("student_identifier", flat=True)
+        )
+        records_to_create = []
+        for student in students:
+            if student.student_id in existing_ids:
+                continue
+            records_to_create.append(RegistrarRecord(
+                batch=batch,
+                student=student,
+                student_identifier=student.student_id,
+                full_name=student.full_name,
+                date_of_birth=student.date_of_birth,
+                college=student.college,
+                course=student.course,
+                year_level=student.year,
+                status=RegistrarRecord.Status.ACTIVE,
+            ))
+        if records_to_create:
+            RegistrarRecord.objects.bulk_create(records_to_create)
+        batch.total_imported = RegistrarRecord.objects.filter(batch=batch).count()
+        batch.save(update_fields=["total_imported", "updated_at"])
+        self.stdout.write(self.style.SUCCESS(
+            f"  {len(records_to_create)} registrar batch records created."
+        ))
 
     def _build_voter_roll(self, election, students):
         """Create verification records, generate eligible voters, and finalize voter roll."""
