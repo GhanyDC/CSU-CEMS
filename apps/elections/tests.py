@@ -111,6 +111,13 @@ class CollegeRepresentativeScopeTests(TestCase):
         session.save()
         return client
 
+    def _position_result(self, results, position):
+        return next(
+            row
+            for row in results["positions"]
+            if row["position_id"] == str(position.pk)
+        )
+
     def test_ballot_only_shows_voters_own_college_rep_seat(self):
         response = self._student_client(self.cics_student).get(
             f"/api/elections/{self.election.pk}/ballot/"
@@ -164,6 +171,48 @@ class CollegeRepresentativeScopeTests(TestCase):
                 candidate=self.cics_candidate,
             ).exists()
         )
+
+    def test_college_rep_abstains_ignore_ballots_from_other_colleges(self):
+        BallotService.cast_ballot(
+            self.cics_student,
+            self.election,
+            [(str(self.cics_rep.pk), str(self.cics_candidate.pk))],
+        )
+
+        results = ResultService.compute_results_with_thresholds(self.election)
+        cics_result = self._position_result(results, self.cics_rep)
+        hss_result = self._position_result(results, self.hss_rep)
+
+        self.assertEqual(results["total_ballots"], 1)
+        self.assertEqual(cics_result["total_ballots"], 1)
+        self.assertEqual(cics_result["position_participation"], 1)
+        self.assertEqual(cics_result["abstain_count"], 0)
+        self.assertEqual(hss_result["total_ballots"], 0)
+        self.assertEqual(hss_result["position_participation"], 0)
+        self.assertEqual(hss_result["abstain_count"], 0)
+
+    def test_college_rep_abstain_counts_only_own_college_skips(self):
+        BallotService.cast_ballot(
+            self.cics_student,
+            self.election,
+            [(str(self.president.pk), str(self.president_candidate.pk))],
+        )
+
+        results = ResultService.compute_results_with_thresholds(self.election)
+        president_result = self._position_result(results, self.president)
+        cics_result = self._position_result(results, self.cics_rep)
+        hss_result = self._position_result(results, self.hss_rep)
+
+        self.assertEqual(results["total_ballots"], 1)
+        self.assertEqual(president_result["total_ballots"], 1)
+        self.assertEqual(president_result["position_participation"], 1)
+        self.assertEqual(president_result["abstain_count"], 0)
+        self.assertEqual(cics_result["total_ballots"], 1)
+        self.assertEqual(cics_result["position_participation"], 0)
+        self.assertEqual(cics_result["abstain_count"], 1)
+        self.assertEqual(hss_result["total_ballots"], 0)
+        self.assertEqual(hss_result["position_participation"], 0)
+        self.assertEqual(hss_result["abstain_count"], 0)
 
     def test_college_election_rejects_wrong_college_even_if_roll_is_wrong(self):
         now = timezone.now()

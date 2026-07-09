@@ -191,16 +191,30 @@ class ResultService:
         )
 
         eligible_by_college = {}
+        position_ballots_by_college = {}
         if election.is_campus:
-            eligible_by_college = {
-                normalize_college(row["college_snapshot"]): row["count"]
-                for row in (
-                    EligibleVoter.objects
-                    .filter(election=election)
-                    .values("college_snapshot")
-                    .annotate(count=Count("id"))
-                )
-            }
+            for row in (
+                EligibleVoter.objects
+                .filter(election=election)
+                .values("college_snapshot")
+                .annotate(count=Count("id"))
+            ):
+                college_key = normalize_college(row["college_snapshot"])
+                if college_key:
+                    eligible_by_college[college_key] = (
+                        eligible_by_college.get(college_key, 0) + row["count"]
+                    )
+
+            ballot_count_key = (
+                "combined_voted" if has_official_onsite_results else "online_voted"
+            )
+            for row in turnout_context.get("by_college", []):
+                college_key = normalize_college(row.get("college", ""))
+                if college_key:
+                    position_ballots_by_college[college_key] = (
+                        position_ballots_by_college.get(college_key, 0)
+                        + int(row.get(ballot_count_key, 0) or 0)
+                    )
 
         positions_data = [
             ResultService._compute_position_result(
@@ -208,6 +222,7 @@ class ResultService:
                 total_ballots_in_election=total_ballots,
                 total_eligible=total_eligible,
                 eligible_by_college=eligible_by_college,
+                position_ballots_by_college=position_ballots_by_college,
                 result_context=result_context,
             )
             for position in positions
@@ -245,6 +260,7 @@ class ResultService:
         total_ballots_in_election: int,
         total_eligible: int,
         eligible_by_college: dict[str, int] | None = None,
+        position_ballots_by_college: dict[str, int] | None = None,
         result_context: dict | None = None,
     ) -> dict:
         """Compute results for a single position, including source-specific tallies."""
@@ -311,6 +327,12 @@ class ResultService:
         ballots_with_selection = int(
             online_position_participation.get(str(position.pk), 0) or 0
         )
+        position_total_ballots = ResultService._get_position_total_ballots(
+            position,
+            results,
+            total_ballots_in_election=total_ballots_in_election,
+            position_ballots_by_college=position_ballots_by_college or {},
+        )
         if has_official_onsite_results:
             abstain_count = None
             position_participation = None
@@ -319,7 +341,7 @@ class ResultService:
                 "are combined because per-position onsite abstentions are not imported."
             )
         else:
-            abstain_count = max(0, total_ballots_in_election - ballots_with_selection)
+            abstain_count = max(0, position_total_ballots - ballots_with_selection)
             position_participation = ballots_with_selection
             participation_note = ""
 
@@ -339,7 +361,7 @@ class ResultService:
             "results": results,
             "abstain_count": abstain_count,
             "position_participation": position_participation,
-            "total_ballots": total_ballots_in_election,
+            "total_ballots": position_total_ballots,
             "counting_mode": (
                 "combined_official" if has_official_onsite_results else "online_only"
             ),
@@ -348,6 +370,38 @@ class ResultService:
             "threshold_50_plus_1": threshold_50_plus_1,
             "threshold_scope": threshold_scope,
         }
+
+    @staticmethod
+    def _get_position_total_ballots(
+        position: Position,
+        results: list[dict],
+        *,
+        total_ballots_in_election: int,
+        position_ballots_by_college: dict[str, int],
+    ) -> int:
+        """
+        Return the ballot denominator that applies to this position.
+
+        Campus college-rep seats are only visible to their represented college,
+        so voters from other colleges should not be counted as abstentions.
+        """
+        if (
+            position.category == Position.Category.HOUSE_COLLEGE
+            and position.election.is_campus
+        ):
+            represented_college = resolve_position_scope_college(
+                position,
+                candidate_colleges=[row.get("college", "") for row in results],
+            )
+            if represented_college:
+                return int(
+                    position_ballots_by_college.get(
+                        normalize_college(represented_college), 0
+                    )
+                    or 0
+                )
+
+        return total_ballots_in_election
 
     @staticmethod
     def _determine_winner(
