@@ -1,18 +1,3 @@
-"""Safe local importer for a preprocessed CEMS registrar CSV.
-
-Place this file at:
-    apps/elections/management/commands/import_registrar_csv.py
-
-Examples:
-    python manage.py import_registrar_csv build/cems_masterlist/cems_students_ready.csv \
-        --batch-name "SY 2026-2027 Masterlist" --academic-year "2026-2027"
-
-    python manage.py import_registrar_csv build/cems_masterlist/cems_students_ready.csv \
-        --batch-name "SY 2026-2027 Masterlist" --academic-year "2026-2027" --commit
-
-The command is a database rollback dry-run unless --commit is explicitly used.
-"""
-
 from __future__ import annotations
 
 import csv
