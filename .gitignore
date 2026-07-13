@@ -71,6 +71,12 @@ docs/agents_outputs/
 static/img/README.md
 MANUAL_*.md
 SETUP_GUIDE.md
+
+# Sensitive registrar data and import staging
+/cems_students_ready.csv
+/cems_students_prod_ready.csv
+/cems-imports/
+
 tests/
 conftest.py
 pytest.ini

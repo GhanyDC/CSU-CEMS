@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import re
+from datetime import date, datetime
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -66,6 +68,8 @@ class Command(BaseCommand):
                 f"CSV contains {len(duplicate_ids)} duplicate student ID(s): {preview}"
             )
 
+        rows = self._normalize_birthdates(rows)
+
         commit = options["commit"]
         mode = "COMMIT" if commit else "DRY RUN / ROLLBACK"
         self.stdout.write(self.style.WARNING(f"Mode: {mode}"))
@@ -108,6 +112,33 @@ class Command(BaseCommand):
                 duplicates.add(sid)
             seen.add(sid)
         return sorted(duplicates)
+
+    @staticmethod
+    def _normalize_birthdates(rows):
+        normalized_rows = []
+        for row_number, row in enumerate(rows, start=1):
+            normalized_row = row.copy()
+            original_value = row.get("date_of_birth")
+            raw_value = (original_value or "").strip()
+
+            try:
+                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value):
+                    parsed = date.fromisoformat(raw_value)
+                elif re.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", raw_value):
+                    parsed = datetime.strptime(raw_value, "%m/%d/%Y").date()
+                else:
+                    raise ValueError("unsupported date format")
+            except (ValueError, TypeError) as exc:
+                student_id = (row.get("student_id") or "").strip()
+                raise CommandError(
+                    f"Row {row_number}: invalid date_of_birth for {student_id}: "
+                    f"{original_value!r}"
+                ) from exc
+
+            normalized_row["date_of_birth"] = parsed.isoformat()
+            normalized_rows.append(normalized_row)
+
+        return normalized_rows
 
     def _resolve_batch(self, options):
         batch_id = options.get("batch_id")
