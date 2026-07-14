@@ -184,7 +184,7 @@ document.getElementById('admin-login-form').addEventListener('submit', async fun
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
             || CEMS.getCookie('csrftoken');
 
-        const resp = await fetch('/api/admin/auth/login/', {
+        const data = await CEMS.api('/api/admin/auth/login/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -196,7 +196,6 @@ document.getElementById('admin-login-form').addEventListener('submit', async fun
             }),
         });
 
-        const data = await resp.json();
         if (data.success) {
             window.location.href = '/admin-panel/';
         } else {
@@ -204,7 +203,7 @@ document.getElementById('admin-login-form').addEventListener('submit', async fun
             alertEl.classList.add('show');
         }
     } catch (err) {
-        alertText.textContent = 'Network error. Please try again.';
+        alertText.textContent = err.message || 'Network error. Please try again.';
         alertEl.classList.add('show');
     } finally {
         btn.disabled = false;

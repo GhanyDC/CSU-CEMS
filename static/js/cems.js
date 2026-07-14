@@ -31,7 +31,15 @@ const CEMS = {
 
         // Handle rate limiting
         if (response.status === 429) {
-            throw new Error('Too many requests. Please wait a moment and try again.');
+            throw new Error('Too many sign-in attempts. Please wait one minute and try again.');
+        }
+
+        // CSRF failures commonly occur in privacy-restricted in-app browsers.
+        if (response.status === 403) {
+            throw new Error(
+                'Security verification failed. Refresh the page and try again. ' +
+                'If you opened CEMS in Messenger, open carigcems.com in Chrome or Safari.'
+            );
         }
 
         // Try to parse JSON response
