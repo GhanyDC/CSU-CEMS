@@ -143,6 +143,7 @@ CEMS_ALLOWED_PHOTO_TYPES: List[str] = ["image/jpeg", "image/png", "image/webp"]
 # CSRF
 CSRF_COOKIE_HTTPONLY: bool = True
 CSRF_COOKIE_SECURE: bool = True
+CSRF_FAILURE_VIEW: str = "apps.accounts.csrf.csrf_failure"
 
 # Session
 SESSION_COOKIE_HTTPONLY: bool = True
@@ -172,6 +173,13 @@ CEMS_LOCKOUT_MINUTES: int = config("CEMS_LOCKOUT_MINUTES", default=30, cast=int)
 # Rate Limiting
 # ---------------------------------------------------------------------------
 RATELIMIT_ENABLE: bool = True
+CEMS_STUDENT_LOGIN_RATE: str = config(
+    "CEMS_STUDENT_LOGIN_RATE", default="300/m"
+)
+CEMS_ADMIN_LOGIN_RATE: str = config("CEMS_ADMIN_LOGIN_RATE", default="20/m")
+CEMS_LOGIN_RATE_LIMIT_RETRY_AFTER: int = config(
+    "CEMS_LOGIN_RATE_LIMIT_RETRY_AFTER", default=60, cast=int
+)
 
 # ---------------------------------------------------------------------------
 # Logging — imported from dedicated module to keep settings clean

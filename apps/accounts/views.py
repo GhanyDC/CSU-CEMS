@@ -26,7 +26,13 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from apps.accounts.models import AdminProfile, Student
-from apps.accounts.utils import get_client_ip, get_user_agent
+from apps.accounts.utils import (
+    get_admin_login_rate,
+    get_client_ip,
+    get_ratelimit_client_ip,
+    get_student_login_rate,
+    get_user_agent,
+)
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 from apps.elections.models import RegistrarImportBatch, RegistrarRecord
@@ -38,9 +44,29 @@ GENERIC_AUTH_ERROR: str = "Invalid credentials. Please try again."
 ACCOUNT_LOCKED_ERROR: str = "Account is temporarily locked. Please try again later."
 
 
+def _rate_limited_response() -> JsonResponse:
+    """Return the API's explicit rate-limit response."""
+    response = JsonResponse(
+        {
+            "success": False,
+            "error": (
+                "Too many login attempts. Please wait a minute and try again."
+            ),
+        },
+        status=429,
+    )
+    response["Retry-After"] = str(settings.CEMS_LOGIN_RATE_LIMIT_RETRY_AFTER)
+    return response
+
+
 @require_POST
 @csrf_protect
-@ratelimit(key="ip", rate="10/m", method="POST", block=True)
+@ratelimit(
+    key=get_ratelimit_client_ip,
+    rate=get_student_login_rate,
+    method="POST",
+    block=False,
+)
 def student_login(request: Any) -> JsonResponse:
     """
     Authenticate a student by student_id + date_of_birth.
@@ -53,9 +79,10 @@ def student_login(request: Any) -> JsonResponse:
         - 200: {"success": true, "student_id": "…"}
         - 400: missing fields
         - 401: invalid credentials / locked
-        - 429: rate limited (handled by decorator)
+        - 429: rate limited
     """
-    import json
+    if getattr(request, "limited", False):
+        return _rate_limited_response()
 
     ip_address: str = get_client_ip(request)
     user_agent: str = get_user_agent(request)
@@ -215,7 +242,12 @@ GENERIC_ADMIN_AUTH_ERROR: str = "Invalid admin credentials."
 
 @require_POST
 @csrf_protect
-@ratelimit(key="ip", rate="5/m", method="POST", block=True)
+@ratelimit(
+    key=get_ratelimit_client_ip,
+    rate=get_admin_login_rate,
+    method="POST",
+    block=False,
+)
 def admin_login(request: Any) -> JsonResponse:
     """
     Authenticate an admin user by username + password.
@@ -229,6 +261,9 @@ def admin_login(request: Any) -> JsonResponse:
         401: invalid credentials / inactive profile
         429: rate limited
     """
+    if getattr(request, "limited", False):
+        return _rate_limited_response()
+
     ip_address: str = get_client_ip(request)
     user_agent: str = get_user_agent(request)
 
